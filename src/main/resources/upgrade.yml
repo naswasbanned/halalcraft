@@ -1,0 +1,352 @@
+# ENCHANTMENT UPGRADE SYSTEM
+upgrade:
+  enabled: true
+  title: "§6§lEnchantment Shop"
+  open-sound:
+    type: "block.chest.open"
+    volume: 1.0
+    pitch: 1.0
+  buy-sound:
+    type: "entity.item.pickup"
+    volume: 1.0
+    pitch: 1.2
+  deny-sound:
+    type: "block.anvil.place"
+    volume: 1.0
+    pitch: 0.5
+  apply-sound:
+    type: "entity.player.levelup"
+    volume: 1.0
+    pitch: 1.0
+  messages:
+    insufficient-virtue: "§cYou need %needed% more virtue! Current: %current%"
+    inventory-full: "§cYour inventory is full!"
+    purchased-book: "§a✓ Received %enchant% for %cost% virtue"
+    applied-enchantment: "§a✓ %enchant% applied to your %tool%!"
+    no-upgrade-book: "§cThis is not an upgrade enchantment book!"
+  
+  # Enchantments organized by category
+  categories:
+    weapon:
+      display-name: "§c⚔ WEAPONS"
+      slot: 1
+      material: "DIAMOND_SWORD"
+      enchantments:
+        sharpness-1:
+          display-name: "§cSharpness I"
+          description: "§7Increase weapon damage"
+          enchantment: "minecraft:sharpness"
+          level: 1
+          cost: 20
+        sharpness-3:
+          display-name: "§cSharpness III"
+          description: "§7More weapon damage"
+          enchantment: "minecraft:sharpness"
+          level: 3
+          cost: 40
+        sharpness-5:
+          display-name: "§cSharpness V"
+          description: "§7Maximum weapon damage"
+          enchantment: "minecraft:sharpness"
+          level: 5
+          cost: 60
+        knockback-1:
+          display-name: "§f↗ Knockback I"
+          description: "§7Enemies knocked back"
+          enchantment: "minecraft:knockback"
+          level: 1
+          cost: 25
+        knockback-2:
+          display-name: "§f↗ Knockback II"
+          description: "§7Enemies knocked back further"
+          enchantment: "minecraft:knockback"
+          level: 2
+          cost: 40
+        looting-1:
+          display-name: "§5💀 Looting I"
+          description: "§7Increase mob drops"
+          enchantment: "minecraft:looting"
+          level: 1
+          cost: 30
+        looting-2:
+          display-name: "§5💀 Looting II"
+          description: "§7More mob drops"
+          enchantment: "minecraft:looting"
+          level: 2
+          cost: 45
+        looting-3:
+          display-name: "§5💀 Looting III"
+          description: "§7Maximum mob drops"
+          enchantment: "minecraft:looting"
+          level: 3
+          cost: 60
+        fire-aspect-1:
+          display-name: "§6🔥 Fire Aspect I"
+          description: "§7Enemies ignite briefly"
+          enchantment: "minecraft:fire_aspect"
+          level: 1
+          cost: 35
+        fire-aspect-2:
+          display-name: "§6🔥 Fire Aspect II"
+          description: "§7Enemies burn longer"
+          enchantment: "minecraft:fire_aspect"
+          level: 2
+          cost: 50
+
+    armor:
+      display-name: "§b🛡 ARMOR"
+      slot: 2
+      material: "DIAMOND_CHESTPLATE"
+      enchantments:
+        protection-1:
+          display-name: "§bProtection I"
+          description: "§7Reduce some damage"
+          enchantment: "minecraft:protection"
+          level: 1
+          cost: 25
+        protection-2:
+          display-name: "§bProtection II"
+          description: "§7Reduce more damage"
+          enchantment: "minecraft:protection"
+          level: 2
+          cost: 40
+        protection-4:
+          display-name: "§bProtection IV"
+          description: "§7Maximum damage reduction"
+          enchantment: "minecraft:protection"
+          level: 4
+          cost: 70
+        blast-protection-2:
+          display-name: "§6💥 Blast Prot II"
+          description: "§7Reduce explosion damage"
+          enchantment: "minecraft:blast_protection"
+          level: 2
+          cost: 45
+        blast-protection-4:
+          display-name: "§6💥 Blast Prot IV"
+          description: "§7Maximum explosion protection"
+          enchantment: "minecraft:blast_protection"
+          level: 4
+          cost: 65
+        fire-protection-2:
+          display-name: "§c🌡 Fire Prot II"
+          description: "§7Reduce fire damage"
+          enchantment: "minecraft:fire_protection"
+          level: 2
+          cost: 40
+        fire-protection-4:
+          display-name: "§c🌡 Fire Prot IV"
+          description: "§7Maximum fire protection"
+          enchantment: "minecraft:fire_protection"
+          level: 4
+          cost: 60
+        projectile-protection-2:
+          display-name: "§9🏹 Projectile II"
+          description: "§7Reduce arrow damage"
+          enchantment: "minecraft:projectile_protection"
+          level: 2
+          cost: 40
+        projectile-protection-4:
+          display-name: "§9🏹 Projectile IV"
+          description: "§7Maximum projectile protection"
+          enchantment: "minecraft:projectile_protection"
+          level: 4
+          cost: 60
+        thorns-1:
+          display-name: "§a🌵 Thorns I"
+          description: "§7Damage attackers when hit"
+          enchantment: "minecraft:thorns"
+          level: 1
+          cost: 35
+        thorns-2:
+          display-name: "§a🌵 Thorns II"
+          description: "§7More damage to attackers"
+          enchantment: "minecraft:thorns"
+          level: 2
+          cost: 50
+
+    tools:
+      display-name: "§e⚒ TOOLS"
+      slot: 3
+      material: "DIAMOND_PICKAXE"
+      enchantments:
+        efficiency-1:
+          display-name: "§eEfficiency I"
+          description: "§7Faster mining"
+          enchantment: "minecraft:efficiency"
+          level: 1
+          cost: 15
+        efficiency-3:
+          display-name: "§eEfficiency III"
+          description: "§7Much faster mining"
+          enchantment: "minecraft:efficiency"
+          level: 3
+          cost: 35
+        efficiency-5:
+          display-name: "§eEfficiency V"
+          description: "§7Maximum mining speed"
+          enchantment: "minecraft:efficiency"
+          level: 5
+          cost: 50
+        fortune-1:
+          display-name: "§6💎 Fortune I"
+          description: "§7More ore drops"
+          enchantment: "minecraft:fortune"
+          level: 1
+          cost: 25
+        fortune-2:
+          display-name: "§6💎 Fortune II"
+          description: "§7More ore drops"
+          enchantment: "minecraft:fortune"
+          level: 2
+          cost: 40
+        fortune-3:
+          display-name: "§6💎 Fortune III"
+          description: "§7Maximum ore drops"
+          enchantment: "minecraft:fortune"
+          level: 3
+          cost: 55
+        silk-touch:
+          display-name: "§dSilk Touch"
+          description: "§7Mine blocks without breaking"
+          enchantment: "minecraft:silk_touch"
+          level: 1
+          cost: 70
+        unbreaking-1:
+          display-name: "§9🔨 Unbreaking I"
+          description: "§7Tools last longer"
+          enchantment: "minecraft:unbreaking"
+          level: 1
+          cost: 20
+        unbreaking-2:
+          display-name: "§9🔨 Unbreaking II"
+          description: "§7Tools last much longer"
+          enchantment: "minecraft:unbreaking"
+          level: 2
+          cost: 35
+        unbreaking-3:
+          display-name: "§9🔨 Unbreaking III"
+          description: "§7Tools last forever"
+          enchantment: "minecraft:unbreaking"
+          level: 3
+          cost: 50
+
+    fishing:
+      display-name: "§b🎣 FISHING"
+      slot: 4
+      material: "FISHING_ROD"
+      enchantments:
+        lure-1:
+          display-name: "§bLure I"
+          description: "§7Fish bite faster"
+          enchantment: "minecraft:lure"
+          level: 1
+          cost: 20
+        lure-2:
+          display-name: "§bLure II"
+          description: "§7Fish bite much faster"
+          enchantment: "minecraft:lure"
+          level: 2
+          cost: 35
+        lure-3:
+          display-name: "§bLure III"
+          description: "§7Fish bite instantly"
+          enchantment: "minecraft:lure"
+          level: 3
+          cost: 50
+        luck-of-the-sea-1:
+          display-name: "§5🌊 Luck I"
+          description: "§7Rare catches more common"
+          enchantment: "minecraft:luck_of_the_sea"
+          level: 1
+          cost: 25
+        luck-of-the-sea-2:
+          display-name: "§5🌊 Luck II"
+          description: "§7Very rare catches"
+          enchantment: "minecraft:luck_of_the_sea"
+          level: 2
+          cost: 40
+        luck-of-the-sea-3:
+          display-name: "§5🌊 Luck III"
+          description: "§7Maximum rarity"
+          enchantment: "minecraft:luck_of_the_sea"
+          level: 3
+          cost: 60
+
+    utility:
+      display-name: "§d✨ UTILITY"
+      slot: 5
+      material: "ENCHANTED_BOOK"
+      enchantments:
+        mending:
+          display-name: "§dMending"
+          description: "§7Repairs using XP"
+          enchantment: "minecraft:mending"
+          level: 1
+          cost: 100
+        aqua-affinity:
+          display-name: "§9⛏ Aqua Affinity"
+          description: "§7Mine underwater at full speed"
+          enchantment: "minecraft:aqua_affinity"
+          level: 1
+          cost: 35
+        depth-strider-1:
+          display-name: "§1🌊 Depth Strider I"
+          description: "§7Walk faster in water"
+          enchantment: "minecraft:depth_strider"
+          level: 1
+          cost: 30
+        depth-strider-2:
+          display-name: "§1🌊 Depth Strider II"
+          description: "§7Walk much faster in water"
+          enchantment: "minecraft:depth_strider"
+          level: 2
+          cost: 45
+        depth-strider-3:
+          display-name: "§1🌊 Depth Strider III"
+          description: "§7Walk at full speed in water"
+          enchantment: "minecraft:depth_strider"
+          level: 3
+          cost: 65
+        frost-walker-1:
+          display-name: "§b❄ Frost Walker I"
+          description: "§7Freeze water under you"
+          enchantment: "minecraft:frost_walker"
+          level: 1
+          cost: 40
+        frost-walker-2:
+          display-name: "§b❄ Frost Walker II"
+          description: "§7Freeze water faster"
+          enchantment: "minecraft:frost_walker"
+          level: 2
+          cost: 60
+        loyalty-1:
+          display-name: "§aLoyalty I"
+          description: "§7Trident returns faster"
+          enchantment: "minecraft:loyalty"
+          level: 1
+          cost: 30
+        loyalty-3:
+          display-name: "§aLoyalty III"
+          description: "§7Trident returns instantly"
+          enchantment: "minecraft:loyalty"
+          level: 3
+          cost: 60
+        riptide-1:
+          display-name: "§cRiptide I"
+          description: "§7Launch yourself with trident"
+          enchantment: "minecraft:riptide"
+          level: 1
+          cost: 40
+        riptide-3:
+          display-name: "§cRiptide III"
+          description: "§7Launch far with trident"
+          enchantment: "minecraft:riptide"
+          level: 3
+          cost: 70
+        channeling:
+          display-name: "§6⚡ Channeling"
+          description: "§7Strike lightning on hit"
+          enchantment: "minecraft:channeling"
+          level: 1
+          cost: 80

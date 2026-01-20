@@ -1,0 +1,37 @@
+name: HalalCraft
+version: 1.21.11
+main: me.halalcraft.HalalCraft
+api-version: 1.21
+commands:
+  islam:
+    description: View Islamic rules
+  pray:
+    description: Perform prayer or join congregational prayer in mosque
+    usage: /pray|/pray together|/pray join <player>
+  mat:
+    description: Give prayer mat
+  dua:
+    description: Say a dua or list available duas
+    usage: /dua <list|type>
+  mosque:
+    description: Create or manage mosques
+    usage: /mosque create <name>
+  virtue:
+    description: View virtue guides, leaderboard, and player stats
+    usage: /virtue|/virtue list|/virtue <player>|/virtue add <player> <amount>|/virtue give <player> <amount>
+  challenge:
+    description: View and claim daily challenges
+    usage: /challenge|/challenge claim <name>
+  shop:
+    description: Open the virtue shop to buy items
+    usage: /shop
+  upgrade:
+    description: Access enchantment upgrades using virtue
+    usage: /upgrade
+permissions:
+  halal.virtue.add:
+    description: Allow admins to add virtue to players
+    default: op
+  halal.virtue.give:
+    description: Allow players to give virtue to other players
+    default: true

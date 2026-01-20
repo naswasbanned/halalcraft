@@ -1,0 +1,250 @@
+islam:
+  rules:
+    - "Follow Islamic principles in this server"
+    - "Respect all players"
+    - "Pray on time"
+
+messages:
+  prayed:
+    - "§a🕌 You prayed %prayer%."
+  missed:
+    - "§c⚠ You missed the %prayer% prayer."
+  free-kill: "§aYou were attacked! Free combat allowed for %s seconds."
+  illegal-attack: "§cYou attacked a mob without being attacked first. Virtue -%d"
+  dua-said: "§aYou have said the %dua% dua. It will last %duration% seconds."
+  need-dua: "§cYou must say the %dua% dua before doing that."
+  dua-cleared: "§eYour %dua% dua has expired/been cleared."
+  duas-cleared: "§eAll your duas have been cleared."
+  eating-missed: "§cYou ate without saying the dua. Virtue -%d"
+  eating-cut: "§eYour food was less effective because you didn't say the dua."
+  dua-already-said: "§cYou can only say the %dua% dua once per day."
+  dua-on-say: "§aYou gained %virtue% virtue for saying the %dua% dua."
+  mosque-enter: "§aYou entered the mosque: §e%mosque%"
+  mosque-leave: "§eYou left the mosque: %mosque%"
+  pray-no-time: "§cNo active prayer time right now."
+  pray-already-prayed: "§cYou already prayed %prayer% today."
+  pray-complete: "§a%prayer% prayer completed! You earned %virtue% virtue."
+  not-in-mosque: "§cYou must be inside a mosque!"
+  already-leading-prayer: "§cYou are already leading a congregational prayer!"
+  started-congregational-prayer: "§a%player% started a congregational prayer in §e%mosque%"
+  no-congregational-prayer: "§cThat player is not leading a congregational prayer."
+  different-mosque-prayer: "§cThat prayer is in a different mosque."
+  congregational-prayer-complete: "§a%prayer% prayer completed! You earned %virtue% virtue (x%multiplier%)."
+  joined-congregational-prayer: "§aYou joined %player%'s congregational prayer! Waiting for leader to start..."
+  player-joined-prayer: "§a%player% joined your congregational prayer! (%count% participants)"
+  not-leading-prayer: "§cYou are not leading a congregational prayer!"
+  prayer-started: "§aThe congregational prayer for %prayer% has been completed! All %count% participants earned %virtue% virtue (x%multiplier%)."
+  congregational-prayer-ended: "§c%player% left the mosque. The congregational prayer has ended!"
+  mosque-deleted: "§cMosque §e%mosque% §chas been deleted because its lectern was broken."
+  jumah-mosque-only: "§cJumah prayer can only be performed in a mosque!"
+  blackmagic: "§cUsing enchantments is forbidden! Virtue -%d"
+  potion-drinking: "§cDrinking potions is haram! Virtue -%d"
+  pig-haram: "§c§lYou touched a pig! Infinite slowness applied. Drink milk to cure!"
+  milk-cure: "§aThe milk has purified you!"
+  enchanting-table-warning: "§c⚠ WARNING: %player% has placed an enchanting table! Blackmagic is forbidden in Islam!"
+  haram-enchantment-detected: "§c⚠ Unpurified Enchantment"
+  enchantment-purified: "§a✓ Purified Enchantment"
+  permission-denied: "§cYou don't have permission to use this command."
+  virtue-admin-given: "§aOP gave you %d virtue!"
+
+economy:
+  virtue:
+    pray: 5
+    illegal-attack: -2
+    miss-dua-slaughter: -1
+    miss-dua-eating: -1
+    miss-prayer: -5
+    blackmagic: -20
+    potion-drinking: -10
+    haram-enchantment-use: -10
+
+mosque:
+  prayer-virtue: 10
+
+friday-prayer:
+  enabled: true
+  virtue-gain: 150
+  virtue-penalty-miss: -50
+  mosque-only: true
+  announcement: "§e§l========== JUMAH PRAYER ==========\n§a🕌 It is time for the Friday congregational prayer (Jumah)!\n§fYou must pray in a mosque.\n§e=================================="
+  title: "§a§lJumah Prayer Time"
+  subtitle: "§fGather at the mosque for the Friday congregational prayer"
+
+dua:
+
+  slaughter:
+    duration-seconds: 300
+    virtue-penalty: -1
+    text: "<{player}> Bismillah, Allahuakbar."
+    broadcast: true
+  sleep:
+    duration-seconds: 300
+    required: true
+    text: "<{player}> Bismika Allahumma ahya wa amutu."
+  eating:
+    duration-seconds: 120
+    text: "<{player}> Bismillah."
+    once-per-day: true
+    virtue-on-say: 1
+  farming:
+    duration-seconds: 600
+    text: "<{player}> Ya Allah, bless this land."
+    once-per-day: true
+    virtue-on-say: 1
+  mining:
+    duration-seconds: 60
+    text: "<{player}> Bismillah, I begin mining."
+    once-per-day: true
+    virtue-on-say: 1
+
+# default dua duration if a specific dua lacks a duration
+default-duration-seconds: 300
+
+# ============================================
+# ENCHANTMENT HARAM SYSTEM
+# ============================================
+enchantment-haram:
+  enabled: true
+  auto-tag-new-enchantments: true
+  detect-distance: 2.0
+  check-interval-ticks: 20
+
+combat:
+  free-kill-duration-seconds: 120
+
+effects:
+  nausea-duration-seconds: 30
+
+virtue:
+  tutorials:
+    - "§a1. Pray on time: +5 virtue per prayer"
+    - "§a2. Friday Jumah prayer: +150 virtue (mosque only!)"
+    - "§a3. Say duas daily: +1 virtue per once-per-day dua (farming, mining, eating)"
+    - "§a4. Join congregational prayers: +10 virtue × number of participants"
+    - "§a5. Kill farm animals with slaughter dua: -0 virtue (avoid penalty)"
+    - "§a6. Avoid illegal mob attacks: -2 virtue per undefended attack"
+    - "§a7. Eat with eating dua: Avoid -1 virtue penalty"
+    - "§a8. Don't miss Jumah: -50 virtue penalty"
+    - "§aType /virtue list to see top players!"
+
+# ============================================
+# PRAYER WARNINGS SYSTEM
+# ============================================
+warnings:
+  enabled: true
+  times:
+    - 300  # 5 minutes before prayer (in seconds)
+    - 60   # 1 minute before prayer (in seconds)
+  sound:
+    enabled: true
+    type: "block.note_block.ding"
+    volume: 1.0
+    pitch: 1.0
+  message-5min: "§e⏰ §l%prayer% prayer in 5 minutes!"
+  message-1min: "§c⏰ §l%prayer% prayer in 1 minute!"
+  action-bar: "§6%prayer% prayer starts in §l%seconds%§r§6 seconds!"
+
+# ============================================
+# DAILY CHALLENGES SYSTEM
+# ============================================
+daily-challenges:
+  enabled: true
+  reset-time: "00:00"  # Server time to reset challenges (HH:MM format)
+  reset-sound:
+    type: "block.note_block.chime"
+    volume: 1.0
+    pitch: 1.2
+  challenges:
+    pray-all-five:
+      description: "Pray all 5 prayers in one day"
+      required: 5
+      reward-virtue: 50
+      task-type: "PRAY_COUNT"
+    say-duas:
+      description: "Say 5 different duas"
+      required: 5
+      reward-virtue: 25
+      task-type: "DUA_COUNT"
+    congregational:
+      description: "Join a congregational prayer"
+      required: 1
+      reward-virtue: 30
+      task-type: "CONGREGATIONAL_PRAYER"
+    virtue-gain:
+      description: "Gain 100 virtue today"
+      required: 100
+      reward-virtue: 40
+      task-type: "VIRTUE_GAIN"
+  messages:
+    completed: "§a✓ Challenge completed: %challenge%! +%virtue% virtue"
+    progress: "§e%challenge%: %current%/%required%"
+    already-claimed: "§cYou already claimed this challenge today!"
+    all-completed: "§a🎊 All challenges completed today!"
+
+# ============================================
+# VIRTUE SHOP SYSTEM
+# ============================================
+shop:
+  enabled: true
+  title: "§6§lVirtue Shop"
+  open-sound:
+    type: "block.chest.open"
+    volume: 1.0
+    pitch: 1.0
+  buy-sound:
+    type: "entity.item.pickup"
+    volume: 1.0
+    pitch: 1.2
+  deny-sound:
+    type: "block.anvil.place"
+    volume: 1.0
+    pitch: 0.5
+  items:
+    apple:
+      display-name: "§cGolden Apple"
+      description: "Restores 4 hearts and gives regeneration"
+      material: "GOLDEN_APPLE"
+      cost: 25
+      amount: 1
+    diamond:
+      display-name: "§bDiamond"
+      description: "Precious gemstone for tools"
+      material: "DIAMOND"
+      cost: 100
+      amount: 1
+    leather-tunic:
+      display-name: "§6Pilgrim's Tunic"
+      description: "Traditional Islamic garment"
+      material: "LEATHER_CHESTPLATE"
+      cost: 150
+      amount: 1
+    enchanted-book:
+      display-name: "§dEnchanted Book (Mending)"
+      description: "Repairs items while you collect XP"
+      material: "ENCHANTED_BOOK"
+      cost: 200
+      amount: 1
+    holy-water:
+      display-name: "§9Blessed Water Bottle"
+      description: "Grants 1 minute of healing effect"
+      material: "POTION"
+      cost: 50
+      amount: 1
+    mosque-beacon:
+      display-name: "§eMosque Beacon"
+      description: "Decorative beacon for your mosque"
+      material: "BEACON"
+      cost: 200
+      amount: 1
+    purification-book:
+      display-name: "§d§lPurification Book"
+      description: "Cures haram enchantments. Use in anvil with enchanted item."
+      material: "ENCHANTED_BOOK"
+      cost: 150
+      amount: 1
+  messages:
+    insufficient-virtue: "§cYou need %needed% more virtue! You have: %current%"
+    purchase-success: "§a✓ Purchased %item% for %cost% virtue!"
+    inventory-full: "§cYour inventory is full!"
+
+
