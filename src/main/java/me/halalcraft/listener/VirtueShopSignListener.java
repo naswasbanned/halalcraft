@@ -3,6 +3,7 @@ package me.halalcraft.listener;
 import java.util.HashMap;
 
 import org.bukkit.Bukkit;
+import org.bukkit.ChatColor;
 import org.bukkit.Material;
 import org.bukkit.NamespacedKey;
 import org.bukkit.block.Block;
@@ -38,15 +39,28 @@ public class VirtueShopSignListener implements Listener {
     @EventHandler
     public void onSignChange(SignChangeEvent event) {
         String[] lines = event.getLines();
-        
+
         // Check if player is creating a shop sign
-        if (!lines[0].equalsIgnoreCase("[Sell]") && !lines[0].equalsIgnoreCase("[Buy]")) {
+        boolean isNormalSell = lines[0].equalsIgnoreCase("[Sell]");
+        boolean isNormalBuy  = lines[0].equalsIgnoreCase("[Buy]");
+        boolean isAdminSell  = lines[0].equalsIgnoreCase("[aSell]");
+        boolean isAdminBuy   = lines[0].equalsIgnoreCase("[aBuy]");
+
+        if (!(isNormalSell || isNormalBuy || isAdminSell || isAdminBuy)) {
             return;
         }
 
-        boolean isSellSign = lines[0].equalsIgnoreCase("[Sell]");
+        boolean isSellSign = isNormalSell || isAdminSell;
+        boolean isAdminShop = isAdminSell || isAdminBuy;
         Player player = event.getPlayer();
         Block signBlock = event.getBlock();
+
+        // Only ops can create admin shops
+        if (isAdminShop && !player.isOp()) {
+            player.sendMessage("§cYou are not allowed to create admin shops.");
+            event.setCancelled(true);
+            return;
+        }
         
         // Validate format
         if (lines[1].isEmpty() || lines[2].isEmpty() || lines[3].isEmpty()) {
@@ -121,7 +135,11 @@ public class VirtueShopSignListener implements Listener {
         }
 
         // Format the sign with colors
-        if (isSellSign) {
+        if (isAdminSell) {
+            event.setLine(0, "§l[§cASell§r§l]");
+        } else if (isAdminBuy) {
+            event.setLine(0, "§l[§cABuy§r§l]");
+        } else if (isSellSign) {
             event.setLine(0, "§l[§aSell§r§l]");
         } else {
             event.setLine(0, "§l[§6Buy§r§l]");
@@ -135,11 +153,14 @@ public class VirtueShopSignListener implements Listener {
         // Store shop owner in sign metadata
         NamespacedKey ownerKey = new NamespacedKey(plugin, "shop_owner");
         Sign signState = (Sign) event.getBlock().getState();
-        signState.getPersistentDataContainer().set(ownerKey, PersistentDataType.STRING, player.getName());
+        String ownerNameToStore = isAdminShop ? "SERVER" : player.getName();
+        signState.getPersistentDataContainer().set(ownerKey, PersistentDataType.STRING, ownerNameToStore);
         signState.update();
 
         player.sendMessage("§a✓ Shop sign created successfully!");
-        if (isSellSign) {
+        if (isAdminShop) {
+            player.sendMessage("§7This is an admin shop with infinite stock/virtue.");
+        } else if (isSellSign) {
             player.sendMessage("§7Players can now right-click the sign to buy items.");
         } else {
             player.sendMessage("§7Players can now right-click the sign with items to sell to you.");
@@ -199,6 +220,10 @@ public class VirtueShopSignListener implements Listener {
      * Handle [Sell] sign click - buyer purchases items
      */
     private void handleSellSignClick(Player buyer, Sign sign, Block signBlock, int quantity, int price, String itemName) {
+        // Detect admin sell shop by header
+        String header = ChatColor.stripColor(sign.getLine(0)).toLowerCase();
+        boolean isAdminSell = header.contains("asell");
+
         // Check buyer has enough virtue
         int buyerVirtue = plugin.getVirtue(buyer);
         if (buyerVirtue < price) {
@@ -216,18 +241,20 @@ public class VirtueShopSignListener implements Listener {
         Chest chest = (Chest) chestBlock.getState();
         Inventory chestInv = chest.getInventory();
 
-        // Find matching items in chest
+        // Find matching items in chest (used as template for admin shops)
         ItemStack itemToSell = findMatchingItem(chestInv, itemName);
         if (itemToSell == null) {
-            buyer.sendMessage("§cShop is out of stock!");
+            buyer.sendMessage("§cShop is out of stock or misconfigured!");
             return;
         }
 
-        // Check if chest has enough items
-        int availableAmount = countItems(chestInv, itemToSell);
-        if (availableAmount < quantity) {
-            buyer.sendMessage("§cShop only has " + availableAmount + " items left!");
-            return;
+        // For normal shops, enforce stock limits; admin shops have infinite stock
+        if (!isAdminSell) {
+            int availableAmount = countItems(chestInv, itemToSell);
+            if (availableAmount < quantity) {
+                buyer.sendMessage("§cShop only has " + availableAmount + " items left!");
+                return;
+            }
         }
 
         // Check if buyer has inventory space
@@ -237,8 +264,10 @@ public class VirtueShopSignListener implements Listener {
         }
 
         // Process transaction
-        // 1. Remove items from chest
-        removeItems(chestInv, itemToSell, quantity);
+        // 1. Remove items from chest (normal shops only)
+        if (!isAdminSell) {
+            removeItems(chestInv, itemToSell, quantity);
+        }
 
         // 2. Deduct virtue from buyer
         plugin.changeVirtue(buyer, -price);
@@ -248,9 +277,9 @@ public class VirtueShopSignListener implements Listener {
         purchasedItem.setAmount(quantity);
         buyer.getInventory().addItem(purchasedItem);
 
-        // 4. Give virtue to shop owner (if online)
+        // 4. Give virtue to shop owner (if online, non-admin shop)
         String ownerName = getShopOwner(sign);
-        if (ownerName != null) {
+        if (ownerName != null && !"SERVER".equalsIgnoreCase(ownerName)) {
             Player owner = Bukkit.getPlayerExact(ownerName);
             if (owner != null && owner.isOnline()) {
                 plugin.changeVirtue(owner, price);
@@ -266,6 +295,10 @@ public class VirtueShopSignListener implements Listener {
      * Handle [Buy] sign click - seller sells items to buyer
      */
     private void handleBuySignClick(Player seller, Sign sign, Block signBlock, int quantity, int price, String itemName) {
+        // Detect admin buy shop by header
+        String header = ChatColor.stripColor(sign.getLine(0)).toLowerCase();
+        boolean isAdminBuy = header.contains("abuy");
+
         // Get the buyer (sign owner)
         String buyerName = getShopOwner(sign);
         if (buyerName == null) {
@@ -276,15 +309,16 @@ public class VirtueShopSignListener implements Listener {
         Player buyer = Bukkit.getPlayerExact(buyerName);
         boolean buyerOffline = buyer == null || !buyer.isOnline();
 
-        // If buyer is online, check virtue immediately
-        if (!buyerOffline) {
-            int buyerVirtue = plugin.getVirtue(buyer);
-            if (buyerVirtue < price) {
-                seller.sendMessage("§cShop owner doesn't have enough virtue! (" + buyerVirtue + "/" + price + ")");
+        // For normal shops, check owner's stored virtue; admin buy shops have infinite virtue
+        if (!isAdminBuy) {
+            int buyerStoredVirtue = plugin.getVirtueByName(buyerName);
+            if (buyerStoredVirtue < price) {
+                seller.sendMessage("§cShop owner doesn't have enough virtue!");
+                seller.sendMessage("§7Required: §b" + price + "§7 | Owner has: §b" + buyerStoredVirtue);
+                seller.sendMessage("§e(This shop is temporarily disabled due to insufficient funds)");
                 return;
             }
         }
-        // If offline, we'll check their stored virtue later when they join
 
         // Check seller has item in hand
         ItemStack itemInHand = seller.getInventory().getItemInMainHand();
@@ -316,10 +350,12 @@ public class VirtueShopSignListener implements Listener {
         Chest chest = (Chest) chestBlock.getState();
         Inventory chestInv = chest.getInventory();
 
-        // Check if chest has space
-        if (!hasChestSpace(chestInv, quantity)) {
-            seller.sendMessage("§cShop chest is full!");
-            return;
+        // For normal shops, ensure chest has space; admin buy shops can overflow into the void
+        if (!isAdminBuy) {
+            if (!hasChestSpace(chestInv, quantity)) {
+                seller.sendMessage("§cShop chest is full!");
+                return;
+            }
         }
 
         // Prepare item to transfer
@@ -336,44 +372,51 @@ public class VirtueShopSignListener implements Listener {
         // This is critical - we need to reload the chest state to ensure we're working with current data
         Chest freshChest = (Chest) chestBlock.getState();
         Inventory freshChestInv = freshChest.getInventory();
-        
-        HashMap<Integer, ItemStack> overflow = freshChestInv.addItem(itemToAdd);
-        
-        if (overflow.isEmpty()) {
-            // All items were added successfully - save the block state
-            chestBlock.getState().update();
-            
-            // Verify items were actually added by checking again
-            Chest verifyChest = (Chest) chestBlock.getState();
-            int itemsInChest = countItems(verifyChest.getInventory(), itemToAdd);
-            
-            if (itemsInChest < quantity) {
-                seller.sendMessage("§cWarning: Items may not have been saved to chest properly!");
-                return;
-            }
 
-            // Process virtue transaction
-            if (buyerOffline) {
-                // Store transaction for offline player
-                plugin.recordPendingTransaction(buyerName, seller.getName(), price, itemName, quantity);
-                seller.sendMessage("§a✓ Sold " + quantity + " " + itemName + " for " + price + " virtue!");
-                seller.sendMessage("§7(Buyer is offline - they will receive virtue when they join)");
-            } else {
-                // Buyer is online - process immediately
-                plugin.changeVirtue(buyer, -price);
-                plugin.changeVirtue(seller, price);
-                seller.sendMessage("§a✓ Sold " + quantity + " " + itemName + " for " + price + " virtue!");
-                buyer.sendMessage("§a✓ Purchased " + quantity + " " + itemName + " for " + price + " virtue!");
-            }
-            
-            plugin.saveVirtueData();
-        } else {
-            // Some items couldn't fit - return to seller
+        HashMap<Integer, ItemStack> overflow = freshChestInv.addItem(itemToAdd);
+
+        if (!isAdminBuy && !overflow.isEmpty()) {
+            // Some items couldn't fit - return to seller for normal shops
             seller.getInventory().addItem(itemInHand);
             seller.updateInventory();
             seller.sendMessage("§cCouldn't add all items to chest - returned to your inventory!");
             return;
         }
+
+        // All items were handled - save the block state for normal shops
+        if (!isAdminBuy) {
+            chestBlock.getState().update();
+        }
+
+        // Process virtue transaction
+        if (isAdminBuy) {
+            // Admin buy: server pays virtue, items are removed (optionally stored if space)
+            plugin.changeVirtue(seller, price);
+            seller.sendMessage("§a✓ Sold " + quantity + " " + itemName + " to the admin shop for " + price + " virtue!");
+        } else if (buyerOffline) {
+            // Give virtue to seller IMMEDIATELY
+            plugin.changeVirtue(seller, price);
+
+            // Deduct from buyer's persistent virtue account (offline-safe)
+            int buyerCurrentVirtue = plugin.getVirtueByName(buyerName);
+            int newBuyerVirtue = Math.max(0, buyerCurrentVirtue - price);
+
+            java.util.UUID buyerUUID = getPlayerUUID(buyerName);
+            if (buyerUUID != null) {
+                plugin.setVirtueByUUID(buyerUUID, newBuyerVirtue);
+            }
+
+            seller.sendMessage("§a✓ Sold " + quantity + " " + itemName + " for " + price + " virtue!");
+            seller.sendMessage("§7(Buyer is offline - virtue deducted from their account)");
+        } else {
+            // Buyer is online - process immediately
+            plugin.changeVirtue(buyer, -price);
+            plugin.changeVirtue(seller, price);
+            seller.sendMessage("§a✓ Sold " + quantity + " " + itemName + " for " + price + " virtue!");
+            buyer.sendMessage("§a✓ Purchased " + quantity + " " + itemName + " for " + price + " virtue!");
+        }
+
+        plugin.saveVirtueData();
     }
 
     /**
@@ -586,5 +629,25 @@ public class VirtueShopSignListener implements Listener {
             }
         }
         return emptySlots > 0;
+    }
+
+    /**
+     * Get player UUID by name (works for online and offline players)
+     */
+    private java.util.UUID getPlayerUUID(String playerName) {
+        // Try online player first
+        org.bukkit.entity.Player online = Bukkit.getPlayerExact(playerName);
+        if (online != null) {
+            return online.getUniqueId();
+        }
+        
+        // Search offline players
+        for (org.bukkit.OfflinePlayer op : Bukkit.getOfflinePlayers()) {
+            if (op.getName() != null && op.getName().equalsIgnoreCase(playerName)) {
+                return op.getUniqueId();
+            }
+        }
+        
+        return null; // Player not found
     }
 }

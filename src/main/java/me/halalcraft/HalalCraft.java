@@ -1,5 +1,7 @@
 package me.halalcraft;
 
+import java.util.AbstractMap;
+import java.util.ArrayList;
 import java.util.Calendar;
 import java.util.Collections;
 import java.util.HashMap;
@@ -595,22 +597,54 @@ public class HalalCraft extends JavaPlugin implements Listener {
      * ===================================================== */
     public void changeVirtue(Player p, int amount) {
         virtue.merge(p.getUniqueId(), amount, Integer::sum);
+        // Real-time monitoring: Save to config immediately
+        int newValue = virtue.get(p.getUniqueId());
+        getConfig().set("virtue." + p.getUniqueId().toString(), newValue);
+        saveConfig();
     }
 
     public void setVirtue(Player p, int amount) {
         virtue.put(p.getUniqueId(), amount);
+        // Real-time monitoring: Save to config immediately
+        getConfig().set("virtue." + p.getUniqueId().toString(), amount);
+        saveConfig();
     }
 
     private void loadVirtueData() {
-        if (!getConfig().contains("players")) return;
-        for (String k : getConfig().getConfigurationSection("players").getKeys(false)) {
-            virtue.put(UUID.fromString(k), getConfig().getInt("players." + k + ".virtue", 0));
+        // Load from new virtue path
+        if (getConfig().contains("virtue")) {
+            for (String k : getConfig().getConfigurationSection("virtue").getKeys(false)) {
+                try {
+                    UUID uuid = UUID.fromString(k);
+                    virtue.put(uuid, getConfig().getInt("virtue." + k, 0));
+                } catch (IllegalArgumentException e) {
+                    // Skip non-UUID keys (like "tutorials" or other config sections)
+                    getLogger().warning("Skipping non-UUID virtue key: " + k);
+                }
+            }
+        }
+        // Migrate old data if exists
+        if (getConfig().contains("players")) {
+            for (String k : getConfig().getConfigurationSection("players").getKeys(false)) {
+                try {
+                    UUID uuid = UUID.fromString(k);
+                    int oldVirtue = getConfig().getInt("players." + k + ".virtue", 0);
+                    virtue.put(uuid, oldVirtue);
+                    // Move to new path
+                    getConfig().set("virtue." + k, oldVirtue);
+                    getConfig().set("players." + k, null);
+                } catch (IllegalArgumentException e) {
+                    // Skip non-UUID keys
+                    getLogger().warning("Skipping non-UUID player key: " + k);
+                }
+            }
+            saveConfig();
         }
     }
 
     public void saveVirtueData() {
         for (var e : virtue.entrySet()) {
-            getConfig().set("players." + e.getKey() + ".virtue", e.getValue());
+            getConfig().set("virtue." + e.getKey().toString(), e.getValue());
         }
         saveConfig();
     }
@@ -660,13 +694,25 @@ public class HalalCraft extends JavaPlugin implements Listener {
     }
 
     private void handleVirtueList(Player p) {
-        // Get top 5 virtue players (including offline)
-        List<Map.Entry<UUID, Integer>> topPlayers = virtue.entrySet().stream()
-                .sorted((a, b) -> b.getValue().compareTo(a.getValue()))
-                .limit(5)
-                .collect(Collectors.toList());
+        // Get top 5 virtue players from config (both online and offline)
+        List<Map.Entry<String, Integer>> topPlayers = new ArrayList<>();
+        
+        if (getConfig().contains("virtue")) {
+            org.bukkit.configuration.ConfigurationSection virtueSection = getConfig().getConfigurationSection("virtue");
+            for (String key : virtueSection.getKeys(false)) {
+                try {
+                    int virtueValue = virtueSection.getInt(key, 0);
+                    topPlayers.add(new AbstractMap.SimpleEntry<>(key, virtueValue));
+                } catch (Exception e) {
+                    // Skip invalid entries
+                }
+            }
+        }
+        
+        topPlayers.sort((a, b) -> b.getValue().compareTo(a.getValue()));
+        List<Map.Entry<String, Integer>> top5 = topPlayers.stream().limit(5).collect(Collectors.toList());
 
-        if (topPlayers.isEmpty()) {
+        if (top5.isEmpty()) {
             p.sendMessage("§cNo virtue data available yet.");
             return;
         }
@@ -675,35 +721,41 @@ public class HalalCraft extends JavaPlugin implements Listener {
         org.bukkit.inventory.Inventory inv = Bukkit.createInventory(null, 9, "§a§lTop Virtue Players");
 
         int slot = 0;
-        for (Map.Entry<UUID, Integer> entry : topPlayers) {
+        for (Map.Entry<String, Integer> entry : top5) {
             if (slot >= 5) break;
 
-            UUID uuid = entry.getKey();
+            String uuidStr = entry.getKey();
             int virtueValue = entry.getValue();
 
-            // Try to get player name (online or from config)
-            String playerName = null;
-            org.bukkit.OfflinePlayer offlinePlayer = Bukkit.getOfflinePlayer(uuid);
-            if (offlinePlayer.getName() != null) {
-                playerName = offlinePlayer.getName();
-            }
+            try {
+                UUID uuid = UUID.fromString(uuidStr);
+                
+                // Try to get player name (online or from offline player data)
+                String playerName = null;
+                org.bukkit.OfflinePlayer offlinePlayer = Bukkit.getOfflinePlayer(uuid);
+                if (offlinePlayer.getName() != null) {
+                    playerName = offlinePlayer.getName();
+                }
 
-            if (playerName == null) {
-                playerName = "Unknown";
-            }
+                if (playerName == null) {
+                    playerName = "Unknown";
+                }
 
-            // Create player head item
-            ItemStack head = new ItemStack(Material.PLAYER_HEAD);
-            SkullMeta skullMeta = (SkullMeta) head.getItemMeta();
-            if (skullMeta != null) {
-                skullMeta.setOwningPlayer(offlinePlayer);
-                skullMeta.setDisplayName("§e" + playerName);
-                skullMeta.setLore(java.util.List.of("§fVirtue: §b" + virtueValue));
-                head.setItemMeta(skullMeta);
-            }
+                // Create player head item
+                ItemStack head = new ItemStack(Material.PLAYER_HEAD);
+                SkullMeta skullMeta = (SkullMeta) head.getItemMeta();
+                if (skullMeta != null) {
+                    skullMeta.setOwningPlayer(offlinePlayer);
+                    skullMeta.setDisplayName("§e" + playerName);
+                    skullMeta.setLore(java.util.List.of("§fVirtue: §b" + virtueValue));
+                    head.setItemMeta(skullMeta);
+                }
 
-            inv.setItem(slot, head);
-            slot++;
+                inv.setItem(slot, head);
+                slot++;
+            } catch (Exception e) {
+                // Skip invalid UUIDs
+            }
         }
 
         p.openInventory(inv);
@@ -844,13 +896,12 @@ public class HalalCraft extends JavaPlugin implements Listener {
             return;
         }
 
-        int virtueValue = virtue.getOrDefault(targetUUID, 0);
+        // Read virtue from config (persistent storage for offline and online players)
+        int virtueValue = getConfig().getInt("virtue." + targetUUID.toString(), 0);
         String displayName = Bukkit.getOfflinePlayer(targetUUID).getName();
         if (displayName == null) displayName = "Unknown";
 
-        p.sendMessage("§a=== " + displayName + " Virtue Info ===");
-        p.sendMessage("§fVirtue: §b" + virtueValue);
-        p.sendMessage("§fStatus: " + (Bukkit.getPlayer(targetUUID) != null ? "§aOnline" : "§7Offline"));
+        p.sendMessage("§a" + displayName + "'s Virtue: §b" + virtueValue);
     }
 
     /* =====================================================
@@ -992,19 +1043,34 @@ public class HalalCraft extends JavaPlugin implements Listener {
                 continue;
             }
 
-            // Process the transaction
-            changeVirtue(player, -virtue);
+            // Process the transaction - check current virtue to prevent going negative
+            int buyerCurrentVirtue = getVirtue(player);
             
-            // Give virtue to seller (whether online or not)
-            OfflinePlayer seller = Bukkit.getOfflinePlayer(sellerName);
-            int sellerCurrentVirtue = getVirtue(seller.getUniqueId());
-            setVirtueByUUID(seller.getUniqueId(), sellerCurrentVirtue + virtue);
-
-            // Notify player
-            player.sendMessage("§a✓ Pending transaction processed:");
-            player.sendMessage("§7Purchased " + quantity + " " + itemName + " from §e" + sellerName + "§7 for §b" + virtue + "§7 virtue");
-
-            totalVirtue += virtue;
+            if (buyerCurrentVirtue >= virtue) {
+                // Buyer has enough virtue - process normally
+                changeVirtue(player, -virtue);
+                
+                player.sendMessage("§a✓ Pending transaction processed:");
+                player.sendMessage("§7Purchased " + quantity + " " + itemName + " from §e" + sellerName + "§7 for §b" + virtue + "§7 virtue");
+                
+                totalVirtue += virtue;
+            } else {
+                // Insufficient virtue - deduct what they have and cap at 0
+                int actualDeduction = buyerCurrentVirtue; // Take all remaining virtue
+                changeVirtue(player, -actualDeduction);
+                int shortfall = virtue - actualDeduction;
+                
+                player.sendMessage("§c⚠ Pending transaction processed (INSUFFICIENT FUNDS):");
+                player.sendMessage("§7Purchased " + quantity + " " + itemName + " from §e" + sellerName);
+                player.sendMessage("§7Required: §b" + virtue + "§7 virtue | Available: §b" + actualDeduction + "§7 virtue");
+                player.sendMessage("§cShortfall: §b" + shortfall + "§c virtue - Your shops may be disabled!");
+                
+                // Note: Seller was already paid immediately when the sale happened
+                // So we just log the shortfall
+                getLogger().warning("Player " + buyerName + " had insufficient virtue for transaction. Required: " + virtue + ", Had: " + actualDeduction + ", Shortfall: " + shortfall);
+                
+                totalVirtue += actualDeduction;
+            }
             completedTransactions.add(trans);
         }
 
@@ -1026,6 +1092,10 @@ public class HalalCraft extends JavaPlugin implements Listener {
      * Set virtue for a player by UUID
      */
     public void setVirtueByUUID(java.util.UUID uuid, int amount) {
+        // Keep in-memory cache in sync
+        virtue.put(uuid, amount);
+
+        // Persist to config (persistent virtue account)
         getConfig().set("virtue." + uuid.toString(), amount);
         saveConfig();
     }
@@ -1035,5 +1105,26 @@ public class HalalCraft extends JavaPlugin implements Listener {
      */
     public int getVirtue(java.util.UUID uuid) {
         return getConfig().getInt("virtue." + uuid.toString(), 0);
+    }
+
+    /**
+     * Get virtue for a player by name (works for both online and offline players)
+     * This is crucial for checking offline player virtue before allowing shop transactions
+     */
+    public int getVirtueByName(String playerName) {
+        // Try online player first
+        Player online = Bukkit.getPlayerExact(playerName);
+        if (online != null) {
+            return virtue.getOrDefault(online.getUniqueId(), 0);
+        }
+        
+        // Search offline players
+        for (org.bukkit.OfflinePlayer op : Bukkit.getOfflinePlayers()) {
+            if (op.getName() != null && op.getName().equalsIgnoreCase(playerName)) {
+                return getVirtue(op.getUniqueId());
+            }
+        }
+        
+        return 0; // Player not found
     }
 }

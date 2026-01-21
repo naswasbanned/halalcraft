@@ -2,6 +2,49 @@
 
 All notable changes to HalalCraft will be documented in this file.
 
+## [1.21.12] - 2026-01-21
+
+### 🔄 Improved Virtue & Shop Systems
+
+#### Added
+
+- **Persistent Virtue Accounts**
+  - Every player now has a server-side virtue account stored by UUID
+  - Virtue changes are saved immediately whenever players gain or spend virtue
+  - `/virtue <player>` now works reliably for offline players
+  - Virtue leaderboard (`/virtue list`) reads from the persistent account data
+
+- **Offline-Safe Player Shops**
+  - [Buy] shop owners can be offline while others sell to their shops
+  - Offline owners' virtue is checked before each transaction using the stored account
+  - Virtue is deducted from the owner's account even if they are offline
+  - Owners can no longer go into negative virtue because of offline sales
+  - Fixed exploit where offline owners could be drained without their virtue changing
+
+- **Admin Shops**
+  - New admin-only shop signs:
+    - `[aSell]` – Admin sell shop (infinite items)
+    - `[aBuy]` – Admin buy shop (infinite virtue)
+  - Only OPs can create `[aSell]` and `[aBuy]` signs (normal players are blocked)
+  - Admin sell shops:
+    - Use chest item as a template and give infinite copies to players
+    - Do not consume chest stock
+    - Players pay virtue; no specific player owner is credited
+  - Admin buy shops:
+    - Server pays virtue to players for their items
+    - Items are removed from players and can be stored in the chest
+    - No owner virtue checks or deductions (server has infinite virtue)
+
+#### Fixed
+
+- Multiple issues with offline [Buy] shop virtue handling:
+  - Owner virtue not updating in `/virtue list` after offline sales
+  - Potential negative virtue values from queued offline transactions
+  - Inconsistent virtue between in-memory cache and config storage
+- Ensured virtue leaderboard and `/virtue` commands always reflect the latest stored values.
+
+---
+
 ## [1.21.11] - 2026-01-20
 
 ### 🎉 Initial Release

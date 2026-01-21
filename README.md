@@ -1,6 +1,6 @@
 # HalalCraft
 
-**Version:** 1.21.11  
+**Version:** 1.21.12  
 **Minecraft Version:** 1.21+  
 **Platform:** Spigot/Paper
 
@@ -45,7 +45,13 @@ A comprehensive Islamic-themed Minecraft plugin that brings Islamic practices, v
   - Earn virtue through prayers, challenges, and halal activities
   - Lose virtue for missing prayers or haram actions
   - Player-to-player virtue transfers
-  - Leaderboard system
+  - Leaderboard system (shows both online and offline players)
+
+- **Persistent Virtue Accounts**
+  - Every player has a server-side virtue account
+  - Virtue changes are saved immediately when gained or spent
+  - `/virtue <player>` works for offline players too
+  - Offline shop owners have their virtue checked and deducted safely
 
 - **Daily Challenges**
   - Rotating daily tasks for virtue rewards
@@ -81,6 +87,17 @@ A comprehensive Islamic-themed Minecraft plugin that brings Islamic practices, v
     - Place chest with detector item, create sign
     - Suppliers right-click with items to sell
     - Buyer receives items in chest
+    - Offline shop owners have virtue deducted from their account when suppliers sell
+
+  - **Admin Shops** (server-controlled)
+    - `[aSell]` signs: infinite-stock shops where players buy from the server
+      - Requires a chest with one template item behind the sign
+      - Items are cloned; chest stock is not consumed
+      - Player pays virtue, no specific player owner is credited
+    - `[aBuy]` signs: infinite-funds shops where players sell to the server
+      - Server pays virtue to players
+      - Items are taken from players and optionally stored in the chest
+    - Only server operators (OP) can create `[aSell]` and `[aBuy]` signs
 
 ---
 

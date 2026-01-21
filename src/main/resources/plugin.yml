@@ -1,5 +1,5 @@
 name: HalalCraft
-version: 1.21.11
+version: 1.21.12
 main: me.halalcraft.HalalCraft
 api-version: 1.21
 commands:

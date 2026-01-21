@@ -8,7 +8,7 @@
     <!-- PROJECT IDENTITY -->
     <groupId>me.halalcraft</groupId>
     <artifactId>HalalCraft</artifactId>
-    <version>1.21.11</version>
+    <version>1.21.12</version>
     <packaging>jar</packaging>
 
     <name>HalalCraft</name>
