@@ -14,6 +14,7 @@ import java.util.stream.Collectors;
 import org.bukkit.Bukkit;
 import org.bukkit.Material;
 import org.bukkit.NamespacedKey;
+import org.bukkit.OfflinePlayer;
 import org.bukkit.World;
 import org.bukkit.block.Block;
 import org.bukkit.command.Command;
@@ -41,6 +42,7 @@ import me.halalcraft.listener.IslamicCombatRule;
 import me.halalcraft.listener.MosqueListener;
 import me.halalcraft.listener.PrayListener;
 import me.halalcraft.listener.PrayerWarningListener;
+import me.halalcraft.listener.TransactionListener;
 import me.halalcraft.listener.UpgradeListener;
 import me.halalcraft.listener.VirtueShopListener;
 import me.halalcraft.listener.VirtueShopSignListener;
@@ -157,7 +159,11 @@ public class HalalCraft extends JavaPlugin implements Listener {
         virtueShopSignListener = new VirtueShopSignListener(this);
         Bukkit.getPluginManager().registerEvents(virtueShopSignListener, this);
 
-        Bukkit.getLogger().info("§a[HalalCraft] Plugin enabled with Warnings, Challenges, Shop, Upgrade System, Enchantment System, and Custom Shop Signs!");
+        // Register transaction listener for offline player shop purchases
+        TransactionListener transactionListener = new TransactionListener(this);
+        Bukkit.getPluginManager().registerEvents(transactionListener, this);
+
+        Bukkit.getLogger().info("§a[HalalCraft] Plugin enabled with Warnings, Challenges, Shop, Upgrade System, Enchantment System, Custom Shop Signs, and Offline Transactions!");
     }
 
     @Override
@@ -917,5 +923,117 @@ public class HalalCraft extends JavaPlugin implements Listener {
      */
     public FileConfiguration getUpgradeConfig() {
         return upgradeConfig;
+    }
+
+    /**
+     * Record a pending transaction for an offline player
+     */
+    public void recordPendingTransaction(String buyerName, String sellerName, int virtue, String itemName, int quantity) {
+        FileConfiguration config = getConfig();
+        
+        // Get or create pending transactions list
+        java.util.List<java.util.Map<String, Object>> transactions = (java.util.List) config.getList("pending-transactions", new java.util.ArrayList<>());
+        
+        // Create transaction record
+        java.util.Map<String, Object> transaction = new java.util.HashMap<>();
+        transaction.put("buyer", buyerName);
+        transaction.put("seller", sellerName);
+        transaction.put("virtue", virtue);
+        transaction.put("item", itemName);
+        transaction.put("quantity", quantity);
+        transaction.put("timestamp", System.currentTimeMillis());
+        
+        transactions.add(transaction);
+        config.set("pending-transactions", transactions);
+        saveConfig();
+    }
+
+    /**
+     * Process pending transactions for a player when they join
+     */
+    public void processPendingTransactions(Player player) {
+        FileConfiguration config = getConfig();
+        java.util.List<java.util.Map<String, Object>> transactions = (java.util.List) config.getList("pending-transactions", new java.util.ArrayList<>());
+        
+        if (transactions.isEmpty()) {
+            return;
+        }
+
+        java.util.List<java.util.Map<String, Object>> completedTransactions = new java.util.ArrayList<>();
+        int totalVirtue = 0;
+
+        for (java.util.Map<String, Object> trans : transactions) {
+            String buyerName = (String) trans.get("buyer");
+            
+            // Only process transactions for this player
+            if (!buyerName.equalsIgnoreCase(player.getName())) {
+                continue;
+            }
+
+            String sellerName = (String) trans.get("seller");
+            int virtue = (Integer) trans.get("virtue");
+            String itemName = (String) trans.get("item");
+            int quantity = (Integer) trans.get("quantity");
+            long timestamp = (Long) trans.get("timestamp");
+
+            // Security: Check if transaction is not too old (older than 30 days)
+            long ageInDays = (System.currentTimeMillis() - timestamp) / (1000 * 60 * 60 * 24);
+            if (ageInDays > 30) {
+                getLogger().warning("Pending transaction for " + buyerName + " is too old (" + ageInDays + " days), skipping: " + trans);
+                completedTransactions.add(trans);
+                continue;
+            }
+
+            // Security: Verify seller still exists (basic check)
+            OfflinePlayer offlineSeller = Bukkit.getOfflinePlayer(sellerName);
+            if (!offlineSeller.hasPlayedBefore()) {
+                getLogger().warning("Seller " + sellerName + " does not exist for transaction: " + trans);
+                completedTransactions.add(trans);
+                continue;
+            }
+
+            // Process the transaction
+            changeVirtue(player, -virtue);
+            
+            // Give virtue to seller (whether online or not)
+            OfflinePlayer seller = Bukkit.getOfflinePlayer(sellerName);
+            int sellerCurrentVirtue = getVirtue(seller.getUniqueId());
+            setVirtueByUUID(seller.getUniqueId(), sellerCurrentVirtue + virtue);
+
+            // Notify player
+            player.sendMessage("§a✓ Pending transaction processed:");
+            player.sendMessage("§7Purchased " + quantity + " " + itemName + " from §e" + sellerName + "§7 for §b" + virtue + "§7 virtue");
+
+            totalVirtue += virtue;
+            completedTransactions.add(trans);
+        }
+
+        // Remove completed transactions
+        for (java.util.Map<String, Object> completed : completedTransactions) {
+            transactions.remove(completed);
+        }
+
+        config.set("pending-transactions", transactions);
+        saveConfig();
+        saveVirtueData();
+
+        if (totalVirtue > 0) {
+            player.sendMessage("§aTotal pending virtue processed: §b" + totalVirtue);
+        }
+    }
+
+    /**
+     * Set virtue for a player by UUID
+     */
+    public void setVirtueByUUID(java.util.UUID uuid, int amount) {
+        getConfig().set("virtue." + uuid.toString(), amount);
+        saveConfig();
+    }
+
+    /**
+     * Get virtue for a player by UUID
+     */
+    public int getVirtue(java.util.UUID uuid) {
+        return getConfig().getInt("virtue." + uuid.toString(), 0);
     }
 }

@@ -274,17 +274,17 @@ public class VirtueShopSignListener implements Listener {
         }
 
         Player buyer = Bukkit.getPlayerExact(buyerName);
-        if (buyer == null || !buyer.isOnline()) {
-            seller.sendMessage("§cShop owner is offline!");
-            return;
-        }
+        boolean buyerOffline = buyer == null || !buyer.isOnline();
 
-        // Check buyer has enough virtue
-        int buyerVirtue = plugin.getVirtue(buyer);
-        if (buyerVirtue < price) {
-            seller.sendMessage("§cShop owner doesn't have enough virtue! (" + buyerVirtue + "/" + price + ")");
-            return;
+        // If buyer is online, check virtue immediately
+        if (!buyerOffline) {
+            int buyerVirtue = plugin.getVirtue(buyer);
+            if (buyerVirtue < price) {
+                seller.sendMessage("§cShop owner doesn't have enough virtue! (" + buyerVirtue + "/" + price + ")");
+                return;
+            }
         }
+        // If offline, we'll check their stored virtue later when they join
 
         // Check seller has item in hand
         ItemStack itemInHand = seller.getInventory().getItemInMainHand();
@@ -349,7 +349,24 @@ public class VirtueShopSignListener implements Listener {
             
             if (itemsInChest < quantity) {
                 seller.sendMessage("§cWarning: Items may not have been saved to chest properly!");
+                return;
             }
+
+            // Process virtue transaction
+            if (buyerOffline) {
+                // Store transaction for offline player
+                plugin.recordPendingTransaction(buyerName, seller.getName(), price, itemName, quantity);
+                seller.sendMessage("§a✓ Sold " + quantity + " " + itemName + " for " + price + " virtue!");
+                seller.sendMessage("§7(Buyer is offline - they will receive virtue when they join)");
+            } else {
+                // Buyer is online - process immediately
+                plugin.changeVirtue(buyer, -price);
+                plugin.changeVirtue(seller, price);
+                seller.sendMessage("§a✓ Sold " + quantity + " " + itemName + " for " + price + " virtue!");
+                buyer.sendMessage("§a✓ Purchased " + quantity + " " + itemName + " for " + price + " virtue!");
+            }
+            
+            plugin.saveVirtueData();
         } else {
             // Some items couldn't fit - return to seller
             seller.getInventory().addItem(itemInHand);
@@ -357,18 +374,6 @@ public class VirtueShopSignListener implements Listener {
             seller.sendMessage("§cCouldn't add all items to chest - returned to your inventory!");
             return;
         }
-
-        // Deduct virtue from buyer
-        plugin.changeVirtue(buyer, -price);
-
-        // Give virtue to seller
-        plugin.changeVirtue(seller, price);
-
-        // Notify both parties
-        seller.sendMessage("§a✓ Sold " + quantity + " " + itemName + " for " + price + " virtue!");
-        buyer.sendMessage("§a✓ Purchased " + quantity + " " + itemName + " for " + price + " virtue!");
-        
-        plugin.saveVirtueData();
     }
 
     /**
