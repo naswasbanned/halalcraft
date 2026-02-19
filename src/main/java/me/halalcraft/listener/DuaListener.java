@@ -66,10 +66,11 @@ public class DuaListener implements Listener {
             }
             plugin.getConfig().set(dayPath, plugin.getServerDay());
             plugin.saveConfig();
-
-            int virtueGain = plugin.getConfig().getInt("dua." + name + ".virtue-on-say", 1);
-            if (virtueGain != 0) plugin.changeVirtue(player, virtueGain);
         }
+
+        // Virtue gain on saying dua (works for both once-per-day and repeatable duas)
+        int virtueGain = plugin.getConfig().getInt("dua." + name + ".virtue-on-say", 0);
+        if (virtueGain != 0) plugin.changeVirtue(player, virtueGain);
 
         activeDuas.putIfAbsent(player.getUniqueId(), new HashMap<>());
         int durationSeconds = plugin.getConfig().getInt("dua." + name + ".duration-seconds",
@@ -135,17 +136,16 @@ public class DuaListener implements Listener {
     }
 
     /**
-     * Clear sleep dua when player leaves the bed (wakes up).
+     * Reset all once-per-day dua tracking (called on new day / Subh)
      */
-    @EventHandler
-    public void onPlayerBedLeave(org.bukkit.event.player.PlayerBedLeaveEvent event) {
-        Player player = event.getPlayer();
-        Map<String, Long> map = activeDuas.get(player.getUniqueId());
-        if (map == null || map.isEmpty()) return;
-
-        // Clear all active duas for the player when they sleep/wake
-        map.clear();
-        player.sendMessage(plugin.getConfig().getString("messages.duas-cleared", "§eAll your duas have been cleared."));
+    public void resetDuaDayTracking() {
+        // Clear the day tracking from config for all players
+        if (plugin.getConfig().contains("players")) {
+            for (String key : plugin.getConfig().getConfigurationSection("players").getKeys(false)) {
+                plugin.getConfig().set("players." + key + ".duas", null);
+            }
+            plugin.saveConfig();
+        }
     }
 
     /**

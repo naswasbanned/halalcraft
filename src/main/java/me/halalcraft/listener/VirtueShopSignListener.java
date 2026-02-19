@@ -11,6 +11,7 @@ import org.bukkit.block.BlockFace;
 import org.bukkit.block.Chest;
 import org.bukkit.block.Sign;
 import org.bukkit.block.data.Directional;
+import org.bukkit.configuration.file.FileConfiguration;
 import org.bukkit.entity.Player;
 import org.bukkit.event.EventHandler;
 import org.bukkit.event.Listener;
@@ -110,6 +111,8 @@ public class VirtueShopSignListener implements Listener {
         Chest chest = (Chest) chestBlock.getState();
         Inventory chestInv = chest.getInventory();
 
+        String storedItemName = lines[2];
+
         // For [Buy] signs, require at least one item in chest as detector
         if (!isSellSign) {
             boolean hasItem = false;
@@ -130,15 +133,16 @@ public class VirtueShopSignListener implements Listener {
             ItemStack detectorItem = findMatchingItem(chestInv, "");
             if (detectorItem != null) {
                 String itemName = formatItemName(detectorItem.getType().name());
+                storedItemName = itemName;
                 event.setLine(2, "§f" + itemName);
             }
         }
 
         // Format the sign with colors
         if (isAdminSell) {
-            event.setLine(0, "§l[§cASell§r§l]");
+            event.setLine(0, "§4§l[§c§lASell§4§l]");
         } else if (isAdminBuy) {
-            event.setLine(0, "§l[§cABuy§r§l]");
+            event.setLine(0, "§4§l[§c§lABuy§4§l]");
         } else if (isSellSign) {
             event.setLine(0, "§l[§aSell§r§l]");
         } else {
@@ -147,6 +151,7 @@ public class VirtueShopSignListener implements Listener {
         event.setLine(1, "§e" + quantity);
         if (isSellSign) {
             event.setLine(2, "§f" + lines[2]);  // Use user input for sell signs
+            storedItemName = lines[2];
         }
         event.setLine(3, "§b" + price + " Virtue");
 
@@ -156,6 +161,9 @@ public class VirtueShopSignListener implements Listener {
         String ownerNameToStore = isAdminShop ? "SERVER" : player.getName();
         signState.getPersistentDataContainer().set(ownerKey, PersistentDataType.STRING, ownerNameToStore);
         signState.update();
+
+        // Persist this chest shop to config for fast /shop browsing
+        registerChestShop(signBlock, chest, isSellSign, isAdminShop, quantity, price, storedItemName, ownerNameToStore);
 
         player.sendMessage("§a✓ Shop sign created successfully!");
         if (isAdminShop) {
@@ -466,6 +474,8 @@ public class VirtueShopSignListener implements Listener {
                     player.sendMessage("§cYou cannot break someone else's shop sign!");
                     return;
                 }
+                // Remove from stored chestshops list
+                removeChestShopBySign(block);
                 player.sendMessage("§eShop sign removed.");
             }
         }
@@ -477,7 +487,11 @@ public class VirtueShopSignListener implements Listener {
                 if (owner != null && !player.getName().equals(owner) && !player.isOp()) {
                     event.setCancelled(true);
                     player.sendMessage("§cYou cannot break someone else's shop chest!");
+                    return;
                 }
+
+                // Owner or op breaking: also remove from stored chestshops list
+                removeChestShopByChest(block);
             }
         }
     }
@@ -629,6 +643,83 @@ public class VirtueShopSignListener implements Listener {
             }
         }
         return emptySlots > 0;
+    }
+
+    /**
+     * Persist a chest shop entry to config for fast /shop browsing.
+     */
+    private void registerChestShop(Block signBlock, Chest chest, boolean isSellSign, boolean isAdminShop,
+                                   int quantity, int price, String itemName, String ownerName) {
+        FileConfiguration config = plugin.getConfig();
+
+        String id = signBlock.getWorld().getName() + "," + signBlock.getX() + "," + signBlock.getY() + "," + signBlock.getZ();
+        String base = "chestshops." + id;
+
+        config.set(base + ".world", signBlock.getWorld().getName());
+        config.set(base + ".signX", signBlock.getX());
+        config.set(base + ".signY", signBlock.getY());
+        config.set(base + ".signZ", signBlock.getZ());
+        config.set(base + ".mode", isSellSign ? "SELL" : "BUY");
+        config.set(base + ".quantity", quantity);
+        config.set(base + ".price", price);
+        config.set(base + ".itemName", itemName);
+        config.set(base + ".owner", ownerName);
+        config.set(base + ".admin", isAdminShop);
+
+        if (chest != null) {
+            config.set(base + ".chestX", chest.getLocation().getBlockX());
+            config.set(base + ".chestY", chest.getLocation().getBlockY());
+            config.set(base + ".chestZ", chest.getLocation().getBlockZ());
+        }
+
+        plugin.saveConfig();
+    }
+
+    /**
+     * Remove a chest shop entry based on its sign location.
+     */
+    private void removeChestShopBySign(Block signBlock) {
+        FileConfiguration config = plugin.getConfig();
+        String id = signBlock.getWorld().getName() + "," + signBlock.getX() + "," + signBlock.getY() + "," + signBlock.getZ();
+        String base = "chestshops." + id;
+        if (config.contains(base)) {
+            config.set(base, null);
+            plugin.saveConfig();
+        }
+    }
+
+    /**
+     * Remove a chest shop entry based on its chest location.
+     */
+    private void removeChestShopByChest(Block chestBlock) {
+        FileConfiguration config = plugin.getConfig();
+        if (!config.contains("chestshops")) {
+            return;
+        }
+
+        org.bukkit.configuration.ConfigurationSection section = config.getConfigurationSection("chestshops");
+        if (section == null) {
+            return;
+        }
+
+        String worldName = chestBlock.getWorld().getName();
+        int cx = chestBlock.getX();
+        int cy = chestBlock.getY();
+        int cz = chestBlock.getZ();
+
+        for (String id : section.getKeys(false)) {
+            String base = "chestshops." + id;
+            String w = config.getString(base + ".world");
+            int storedCx = config.getInt(base + ".chestX", Integer.MIN_VALUE);
+            int storedCy = config.getInt(base + ".chestY", Integer.MIN_VALUE);
+            int storedCz = config.getInt(base + ".chestZ", Integer.MIN_VALUE);
+
+            if (worldName.equals(w) && storedCx == cx && storedCy == cy && storedCz == cz) {
+                config.set(base, null);
+                plugin.saveConfig();
+                break;
+            }
+        }
     }
 
     /**

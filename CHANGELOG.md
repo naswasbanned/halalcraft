@@ -2,7 +2,7 @@
 
 All notable changes to HalalCraft will be documented in this file.
 
-## [1.21.12] - 2026-01-21
+## [1.21.12] - 2026-02-20
 
 ### 🔄 Improved Virtue & Shop Systems
 
@@ -34,6 +34,25 @@ All notable changes to HalalCraft will be documented in this file.
     - Server pays virtue to players for their items
     - Items are removed from players and can be stored in the chest
     - No owner virtue checks or deductions (server has infinite virtue)
+
+- **Chest Shop Browser (`/shop`)**
+  - `/shop` now opens a GUI browser listing all active `[Sell]`, `[Buy]`, `[aSell]`, and `[aBuy]` chest shops.
+  - Players can choose Buy or Sell mode and see owner, item, price, and location.
+  - Chest shop metadata is stored in `config.yml` under `chestshops.*` to avoid scanning worlds/chunks and reduce lag.
+
+- **Open Shop Market (`/openshop`)**
+  - New one-item listing system backed by `openshop.listings.*` in `config.yml`.
+  - `/openshop` opens a paginated GUI of all listings; `/openshop sell <price>` lists the item in your hand for virtue.
+  - Players can have multiple listings; the per-player cap is configurable via `openshop.max-listings-per-player`.
+  - Listings can be cancelled by right-clicking your own item in the GUI; virtue is transferred even if the seller is offline.
+  - New listings broadcast a server-wide announcement.
+
+- **Command Snippets / Tab Completion**
+  - Added tab-completion for: `/dua`, `/pray`, `/mosque`, `/virtue`, `/challenge`, `/shop`, `/openshop`, `/chestshop`, `/upgrade`, `/halalcraft`.
+  - Suggests available subcommands (e.g. `list`, `claim`, `sell`) and player names where appropriate.
+
+- **Manual Virtue Save**
+  - New OP-only command `/savevirtue` to manually flush all virtue data to disk.
 
 #### Fixed
 
@@ -172,7 +191,6 @@ All notable changes to HalalCraft will be documented in this file.
 
 ### Planned for Future Releases
 
-- [ ] Offline player virtue crediting for shop sales
 - [ ] Shop transaction history
 - [ ] Multiple mosque support per player
 - [ ] Ramadan special events

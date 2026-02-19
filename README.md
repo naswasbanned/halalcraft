@@ -72,12 +72,12 @@ A comprehensive Islamic-themed Minecraft plugin that brings Islamic practices, v
 
 ### 🏪 Shop Systems
 
-- **Virtue Shop**
-  - Buy items and enchantment books with virtue
-  - Upgrade enchantments on existing items
-  - Configurable prices and items
+- **Chest Shop Browser (`/shop`)**
+  - Browse all active [Sell]/[Buy]/admin chest shops in a GUI
+  - Filter by Buy/Sell mode and see owner, item, price, and location
+  - Works with offline owners; virtue is handled safely
 
-- **Player Shops**
+- **Player Chest Shops (Signs)**
   - **[Sell] Signs** - Players sell items to others
     - Place chest, add items, create sign
     - Customers right-click sign to purchase
@@ -99,11 +99,18 @@ A comprehensive Islamic-themed Minecraft plugin that brings Islamic practices, v
       - Items are taken from players and optionally stored in the chest
     - Only server operators (OP) can create `[aSell]` and `[aBuy]` signs
 
+- **Open Shop Market (`/openshop`)**
+  - `/openshop` shows all one-item listings from players in a GUI
+  - `/openshop sell <price>` lists the item in your hand for virtue
+  - Players can have multiple listings; max per player is configurable in `config.yml`
+  - Listings can be cancelled by right-clicking your own item in the GUI
+  - New listings broadcast a global announcement when created
+
 ---
 
 ## 📥 Installation
 
-1. Download `HalalCraft-1.21.11.jar`
+1. Download `HalalCraft-1.21.12.jar`
 2. Place the JAR file in your server's `plugins` folder
 3. Restart your server
 4. Configure the plugin in `plugins/HalalCraft/config.yml`
@@ -127,6 +134,7 @@ A comprehensive Islamic-themed Minecraft plugin that brings Islamic practices, v
 | `/pray together` | Start congregational prayer (mosque only) | - |
 | `/pray join <player>` | Join congregational prayer | - |
 | `/mat` | Receive prayer mats (OP only) | OP |
+| `/halalcraft info` | View detailed plugin information and systems | - |
 
 ### Dua Commands
 
@@ -155,8 +163,14 @@ A comprehensive Islamic-themed Minecraft plugin that brings Islamic practices, v
 
 | Command | Description |
 |---------|-------------|
-| `/shop` | Open the virtue shop GUI |
+| `/shop` | Open the chest shop browser GUI (browse [Sell]/[Buy]/admin shops) |
+| `/openshop` | View global one-item player listings |
+| `/openshop sell <price>` | List the item in your hand for virtue |
+| `/chestshop sell <price>` | Alias: list the item in your hand for virtue |
 | `/upgrade` | Open enchantment upgrade GUI |
+| `/savevirtue` | Manually save all virtue data to disk (OP) |
+
+> Most commands support tab-completion for subcommands and player names (e.g. `/dua`, `/pray`, `/virtue`, `/openshop`).
 
 ### Challenge Commands
 

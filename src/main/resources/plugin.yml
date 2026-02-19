@@ -3,6 +3,9 @@ version: 1.21.12
 main: me.halalcraft.HalalCraft
 api-version: 1.21
 commands:
+  halalcraft:
+    description: View plugin information and core mechanics
+    usage: /halalcraft info
   islam:
     description: View Islamic rules
   pray:
@@ -25,9 +28,18 @@ commands:
   shop:
     description: Open the virtue shop to buy items
     usage: /shop
+  openshop:
+    description: Open or sell in the global one-item player shop
+    usage: /openshop | /openshop sell <price>
+  chestshop:
+    description: List the item in your hand for sale in /openshop
+    usage: /chestshop sell <price>
   upgrade:
     description: Access enchantment upgrades using virtue
     usage: /upgrade
+  savevirtue:
+    description: Manually save all virtue data to disk (OP only)
+    usage: /savevirtue
 permissions:
   halal.virtue.add:
     description: Allow admins to add virtue to players

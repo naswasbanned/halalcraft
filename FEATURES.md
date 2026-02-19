@@ -289,7 +289,7 @@
 ## Build Status ✅
 - **Last Build:** SUCCESS (Exit Code: 0)
 - **Maven Command:** `mvn clean package`
-- **Plugin JAR:** `/home/nas/IdeaProjects/HalalCraft/target/HalalCraft-1.21.11.jar`
+- **Plugin JAR:** `/home/nas/IdeaProjects/HalalCraft/target/HalalCraft-1.21.12.jar`
 
 ## Configuration Status ✅
 - **Config File:** `src/main/resources/config.yml`

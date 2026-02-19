@@ -2,11 +2,21 @@ package me.halalcraft.listener;
 
 import java.util.ArrayList;
 import java.util.List;
-import java.util.Set;
 
 import org.bukkit.Bukkit;
+import org.bukkit.ChatColor;
+import org.bukkit.Location;
 import org.bukkit.Material;
-import org.bukkit.SoundCategory;
+import org.bukkit.NamespacedKey;
+import org.bukkit.World;
+import org.bukkit.block.Block;
+import org.bukkit.block.BlockFace;
+import org.bukkit.block.BlockState;
+import org.bukkit.block.Chest;
+import org.bukkit.block.Sign;
+import org.bukkit.block.data.Directional;
+import org.bukkit.configuration.ConfigurationSection;
+import org.bukkit.configuration.file.FileConfiguration;
 import org.bukkit.entity.Player;
 import org.bukkit.event.EventHandler;
 import org.bukkit.event.Listener;
@@ -15,240 +25,521 @@ import org.bukkit.event.player.PlayerCommandPreprocessEvent;
 import org.bukkit.inventory.Inventory;
 import org.bukkit.inventory.ItemStack;
 import org.bukkit.inventory.meta.ItemMeta;
+import org.bukkit.persistence.PersistentDataContainer;
+import org.bukkit.persistence.PersistentDataType;
 
 import me.halalcraft.HalalCraft;
 
 public class VirtueShopListener implements Listener {
 
     private final HalalCraft plugin;
-    private final String SHOP_ID = "halalcraft_virtue_shop";
+
+    private static final String MAIN_MENU_TITLE = "§6§lChest Shops";
+    private static final String BUY_LIST_TITLE_BASE = "§6§lChest Shops — Buy";
+    private static final String SELL_LIST_TITLE_BASE = "§6§lChest Shops — Sell";
+
+    private static final int LIST_INVENTORY_SIZE = 54; // 6 rows
+    private static final int PAGE_SIZE = 45; // first 5 rows for entries
+
+    private static final int SLOT_PREVIOUS = 45;
+    private static final int SLOT_BACK = 49;
+    private static final int SLOT_NEXT = 53;
+
+    private final NamespacedKey shopLocKey;
+
+    private enum BrowseMode {
+        BUY,  // player wants to buy items (browse [Sell] shops)
+        SELL  // player wants to sell items (browse [Buy] shops)
+    }
+
+    private static class ChestShopEntry {
+        final BrowseMode mode;
+        final String worldName;
+        final int signX;
+        final int signY;
+        final int signZ;
+        final String owner;
+        final boolean adminShop;
+        final int quantity;
+        final int price;
+        final String itemName;
+        final Location chestLocation;
+
+        ChestShopEntry(BrowseMode mode, String worldName, int signX, int signY, int signZ,
+                       String owner, boolean adminShop, int quantity, int price,
+                       String itemName, Location chestLocation) {
+            this.mode = mode;
+            this.worldName = worldName;
+            this.signX = signX;
+            this.signY = signY;
+            this.signZ = signZ;
+            this.owner = owner;
+            this.adminShop = adminShop;
+            this.quantity = quantity;
+            this.price = price;
+            this.itemName = itemName;
+            this.chestLocation = chestLocation;
+        }
+    }
 
     public VirtueShopListener(HalalCraft plugin) {
         this.plugin = plugin;
+        this.shopLocKey = new NamespacedKey(plugin, "shop_browser_sign_loc");
     }
 
     @EventHandler
     public void onShopCommand(PlayerCommandPreprocessEvent event) {
         String msg = event.getMessage();
         Player player = event.getPlayer();
-        
+
         if (msg.equalsIgnoreCase("/shop")) {
             event.setCancelled(true);
-            openShop(player);
+            openMainMenu(player);
         }
     }
 
     /**
-     * Open virtue shop GUI for player
+     * Open main /shop GUI where player chooses Buy or Sell browsing.
      */
-    public void openShop(Player player) {
-        if (!plugin.getConfig().getBoolean("shop.enabled", true)) {
-            player.sendMessage("§cThe shop is currently disabled!");
-            return;
+    private void openMainMenu(Player player) {
+        Inventory inv = Bukkit.createInventory(null, 27, MAIN_MENU_TITLE);
+
+        // Buy option (browse [Sell] shops)
+        ItemStack buyItem = new ItemStack(Material.EMERALD);
+        ItemMeta buyMeta = buyItem.getItemMeta();
+        if (buyMeta != null) {
+            buyMeta.setDisplayName("§aBrowse Shops to §lBUY");
+            List<String> lore = new ArrayList<>();
+            lore.add("§7See all chest shops where you");
+            lore.add("§7can §abuy §7items with virtue.");
+            buyMeta.setLore(lore);
+            buyItem.setItemMeta(buyMeta);
         }
 
-        String title = plugin.getConfig().getString("shop.title", "§6§lVirtue Shop");
-        Set<String> itemKeys = plugin.getConfig().getConfigurationSection("shop.items").getKeys(false);
-        int size = Math.min(((itemKeys.size() + 8) / 9) * 9, 54); // Size in multiples of 9, max 54
-
-        Inventory shop = Bukkit.createInventory(null, size, title);
-
-        int slot = 0;
-        for (String itemKey : itemKeys) {
-            String configPath = "shop.items." + itemKey;
-            String displayName = plugin.getConfig().getString(configPath + ".display-name", itemKey);
-            String description = plugin.getConfig().getString(configPath + ".description", "");
-            String materialName = plugin.getConfig().getString(configPath + ".material", "DIAMOND");
-            int cost = plugin.getConfig().getInt(configPath + ".cost", 100);
-            int amount = plugin.getConfig().getInt(configPath + ".amount", 1);
-
-            Material material;
-            try {
-                material = Material.valueOf(materialName);
-            } catch (IllegalArgumentException e) {
-                Bukkit.getLogger().warning("[HalalCraft] Invalid material in shop: " + materialName);
-                continue;
-            }
-
-            ItemStack item = new ItemStack(material, 1);
-            ItemMeta meta = item.getItemMeta();
-            if (meta != null) {
-                meta.setDisplayName(displayName);
-                
-                List<String> lore = new ArrayList<>();
-                lore.add("§7" + description);
-                lore.add(" ");
-                lore.add("§6Cost: §e" + cost + " virtue");
-                lore.add("§6Quantity: §e" + amount);
-                lore.add(" ");
-                lore.add("§aClick to purchase");
-                meta.setLore(lore);
-                item.setItemMeta(meta);
-            }
-
-            // Store item key in item's display name temporarily for identification
-            shop.setItem(slot, item);
-            slot++;
-
-            if (slot >= size) break;
+        // Sell option (browse [Buy] shops)
+        ItemStack sellItem = new ItemStack(Material.CHEST);
+        ItemMeta sellMeta = sellItem.getItemMeta();
+        if (sellMeta != null) {
+            sellMeta.setDisplayName("§eBrowse Shops to §lSELL");
+            List<String> lore = new ArrayList<>();
+            lore.add("§7See all chest shops where you");
+            lore.add("§7can §esell §7items for virtue.");
+            sellMeta.setLore(lore);
+            sellItem.setItemMeta(sellMeta);
         }
 
-        player.openInventory(shop);
-        
-        // Play open sound
-        if (plugin.getConfig().getBoolean("shop.open-sound.enabled", true)) {
-            try {
-                String soundName = plugin.getConfig().getString("shop.open-sound.type", "block.chest.open");
-                float volume = (float) plugin.getConfig().getDouble("shop.open-sound.volume", 1.0);
-                float pitch = (float) plugin.getConfig().getDouble("shop.open-sound.pitch", 1.0);
-                String properSound = convertSoundName(soundName);
-                player.playSound(player.getLocation(), properSound, SoundCategory.MASTER, volume, pitch);
-            } catch (Exception e) {
-                try {
-                    player.playSound(player.getLocation(), "block.chest.open", SoundCategory.MASTER, 1.0f, 1.0f);
-                } catch (Exception ignored) {
-                }
-            }
-        }
+        inv.setItem(11, buyItem);
+        inv.setItem(15, sellItem);
+
+        player.openInventory(inv);
     }
 
     @EventHandler
-    public void onShopClick(InventoryClickEvent event) {
+    public void onInventoryClick(InventoryClickEvent event) {
         if (!(event.getWhoClicked() instanceof Player)) return;
-        
+
         Player player = (Player) event.getWhoClicked();
-        
-        // Check if this is the shop inventory by checking the title
         String title = event.getView().getTitle();
-        if (!title.contains("Virtue Shop")) return;
+
+        if (title.equals(MAIN_MENU_TITLE)) {
+            event.setCancelled(true);
+            handleMainMenuClick(event, player);
+            return;
+        }
+
+        BrowseMode mode = null;
+        if (title.startsWith(BUY_LIST_TITLE_BASE)) {
+            mode = BrowseMode.BUY;
+        } else if (title.startsWith(SELL_LIST_TITLE_BASE)) {
+            mode = BrowseMode.SELL;
+        }
+
+        if (mode == null) {
+            return; // Not one of our GUIs
+        }
 
         event.setCancelled(true);
+        handleListClick(event, player, mode, title);
+    }
+
+    private void handleMainMenuClick(InventoryClickEvent event, Player player) {
+        ItemStack clicked = event.getCurrentItem();
+        if (clicked == null || clicked.getType() == Material.AIR) return;
+
+        ItemMeta meta = clicked.getItemMeta();
+        if (meta == null || !meta.hasDisplayName()) return;
+
+        String name = ChatColor.stripColor(meta.getDisplayName()).toLowerCase();
+
+        if (name.contains("buy")) {
+            openShopList(player, BrowseMode.BUY, 0);
+        } else if (name.contains("sell")) {
+            openShopList(player, BrowseMode.SELL, 0);
+        }
+    }
+
+    private void handleListClick(InventoryClickEvent event, Player player, BrowseMode mode, String title) {
+        int slot = event.getRawSlot();
+
+        int currentPage = extractPageFromTitle(title);
+        if (currentPage < 0) currentPage = 0;
+
+        if (slot == SLOT_PREVIOUS) {
+            if (currentPage > 0) {
+                openShopList(player, mode, currentPage - 1);
+            }
+            return;
+        }
+
+        if (slot == SLOT_NEXT) {
+            openShopList(player, mode, currentPage + 1);
+            return;
+        }
+
+        if (slot == SLOT_BACK) {
+            openMainMenu(player);
+            return;
+        }
+
+        // Ignore clicks outside the top inventory
+        if (slot >= event.getView().getTopInventory().getSize()) {
+            return;
+        }
 
         ItemStack clicked = event.getCurrentItem();
         if (clicked == null || clicked.getType() == Material.AIR) return;
 
-        // Find which item was clicked
         ItemMeta meta = clicked.getItemMeta();
         if (meta == null) return;
-        
-        String itemName = meta.getDisplayName();
-        String itemKey = findItemKeyByName(itemName);
-        
-        if (itemKey == null) return;
 
-        purchaseItem(player, itemKey);
-    }
+        PersistentDataContainer container = meta.getPersistentDataContainer();
+        if (!container.has(shopLocKey, PersistentDataType.STRING)) {
+            return; // Not a shop entry
+        }
 
-    /**
-     * Purchase item from shop
-     */
-    private void purchaseItem(Player player, String itemKey) {
-        String configPath = "shop.items." + itemKey;
-        int cost = plugin.getConfig().getInt(configPath + ".cost", 100);
-        String materialName = plugin.getConfig().getString(configPath + ".material", "DIAMOND");
-        int amount = plugin.getConfig().getInt(configPath + ".amount", 1);
-        String displayName = plugin.getConfig().getString(configPath + ".display-name", itemKey);
+        String locString = container.get(shopLocKey, PersistentDataType.STRING);
+        if (locString == null || locString.isEmpty()) return;
 
-        int playerVirtue = plugin.getVirtue(player);
+        String[] parts = locString.split(",");
+        if (parts.length != 4) return;
 
-        // Check sufficient virtue
-        if (playerVirtue < cost) {
-            String msg = plugin.getConfig().getString("shop.messages.insufficient-virtue", 
-                    "§cYou need %needed% more virtue! You have: %current%");
-            msg = msg.replace("%needed%", String.valueOf(cost - playerVirtue))
-                    .replace("%current%", String.valueOf(playerVirtue));
-            player.sendMessage(msg);
-            
-            playDenySound(player);
+        String worldName = parts[0];
+        int x;
+        int y;
+        int z;
+        try {
+            x = Integer.parseInt(parts[1]);
+            y = Integer.parseInt(parts[2]);
+            z = Integer.parseInt(parts[3]);
+        } catch (NumberFormatException e) {
             return;
         }
 
-        // Check inventory space
-        if (player.getInventory().firstEmpty() == -1) {
-            String msg = plugin.getConfig().getString("shop.messages.inventory-full", "§cYour inventory is full!");
-            player.sendMessage(msg);
-            playDenySound(player);
+        World world = Bukkit.getWorld(worldName);
+        if (world == null) {
+            player.sendMessage("§cWorld for this shop is not loaded.");
             return;
         }
 
-        // Deduct virtue
-        plugin.changeVirtue(player, -cost);
+        Block signBlock = world.getBlockAt(x, y, z);
+        BlockState state = signBlock.getState();
+        if (!(state instanceof Sign)) {
+            player.sendMessage("§cThis shop no longer exists.");
+            return;
+        }
 
-        // Give item
-        Material material = Material.valueOf(materialName);
-        ItemStack item = new ItemStack(material, amount);
-        player.getInventory().addItem(item);
+        Sign sign = (Sign) state;
 
-        // Success message
-        String msg = plugin.getConfig().getString("shop.messages.purchase-success", 
-                "§a✓ Purchased %item% for %cost% virtue!");
-        msg = msg.replace("%item%", displayName)
-                .replace("%cost%", String.valueOf(cost));
-        player.sendMessage(msg);
+        String[] lines = sign.getLines();
+        String header = ChatColor.stripColor(lines[0]).toLowerCase();
+        boolean isSellSign = header.contains("sell");
+        boolean isBuySign = header.contains("buy");
 
-        playBuySound(player);
+        if (mode == BrowseMode.BUY && !isSellSign) {
+            player.sendMessage("§cThis is no longer a sell shop.");
+            return;
+        }
+        if (mode == BrowseMode.SELL && !isBuySign) {
+            player.sendMessage("§cThis is no longer a buy shop.");
+            return;
+        }
+
+        int quantity;
+        int price;
+        String itemName;
+        try {
+            quantity = Integer.parseInt(ChatColor.stripColor(lines[1]).trim());
+            String priceStr = ChatColor.stripColor(lines[3]).replace(" Virtue", "").trim();
+            price = Integer.parseInt(priceStr);
+            itemName = ChatColor.stripColor(lines[2]).trim();
+        } catch (Exception e) {
+            player.sendMessage("§cShop sign is corrupted.");
+            return;
+        }
+
+        String owner = getShopOwner(sign);
+        if (owner == null || owner.isEmpty()) {
+            owner = "Unknown";
+        }
+
+        Block chestBlock = getChestBehindSign(signBlock);
+        Location targetLoc = (chestBlock != null ? chestBlock.getLocation() : signBlock.getLocation());
+
+        if (mode == BrowseMode.BUY) {
+            player.sendMessage("§aYou can §lBUY §r§a" + quantity + " " + itemName + " for §e" + price + " virtue");
+        } else {
+            player.sendMessage("§aYou can §lSELL §r§a" + quantity + " " + itemName + " for §e" + price + " virtue");
+        }
+
+        player.sendMessage("§7Shop owner: §b" + owner);
+        player.sendMessage("§7Location: §f" + targetLoc.getWorld().getName() + " §7@ §f" +
+                targetLoc.getBlockX() + ", " + targetLoc.getBlockY() + ", " + targetLoc.getBlockZ());
+
+        try {
+            player.setCompassTarget(targetLoc);
+            player.sendMessage("§7Your compass now points to this shop.");
+        } catch (Exception ignored) {
+        }
     }
 
-    /**
-     * Find item key by display name
-     */
-    private String findItemKeyByName(String displayName) {
-        Set<String> itemKeys = plugin.getConfig().getConfigurationSection("shop.items").getKeys(false);
-        for (String itemKey : itemKeys) {
-            String configName = plugin.getConfig().getString("shop.items." + itemKey + ".display-name", itemKey);
-            if (configName.equals(displayName)) {
-                return itemKey;
+    private int extractPageFromTitle(String title) {
+        // Title format: "... (Page X/Y)"
+        String stripped = ChatColor.stripColor(title);
+        int idx = stripped.indexOf("Page ");
+        if (idx == -1) return 0;
+        int slash = stripped.indexOf('/', idx);
+        if (slash == -1) return 0;
+        String pagePart = stripped.substring(idx + 5, slash).trim();
+        try {
+            int page = Integer.parseInt(pagePart);
+            return Math.max(0, page - 1); // convert to 0-based
+        } catch (NumberFormatException e) {
+            return 0;
+        }
+    }
+
+    private void openShopList(Player player, BrowseMode mode, int page) {
+        List<ChestShopEntry> shops = getAllChestShops(mode);
+
+        if (shops.isEmpty()) {
+            if (mode == BrowseMode.BUY) {
+                player.sendMessage("§cThere are no active chest shops where you can buy items.");
+            } else {
+                player.sendMessage("§cThere are no active chest shops where you can sell items.");
+            }
+            return;
+        }
+
+        int totalPages = (shops.size() + PAGE_SIZE - 1) / PAGE_SIZE;
+        if (page < 0) page = 0;
+        if (page >= totalPages) page = totalPages - 1;
+
+        String baseTitle = (mode == BrowseMode.BUY ? BUY_LIST_TITLE_BASE : SELL_LIST_TITLE_BASE);
+        String title = baseTitle + " §7(Page " + (page + 1) + "/" + totalPages + ")";
+
+        Inventory inv = Bukkit.createInventory(null, LIST_INVENTORY_SIZE, title);
+
+        int startIndex = page * PAGE_SIZE;
+        int endIndex = Math.min(startIndex + PAGE_SIZE, shops.size());
+
+        for (int i = startIndex; i < endIndex; i++) {
+            ChestShopEntry entry = shops.get(i);
+            int slot = i - startIndex;
+            inv.setItem(slot, createShopItem(entry));
+        }
+
+        // Navigation controls
+        if (page > 0) {
+            ItemStack prev = new ItemStack(Material.ARROW);
+            ItemMeta meta = prev.getItemMeta();
+            if (meta != null) {
+                meta.setDisplayName("§ePrevious Page");
+                prev.setItemMeta(meta);
+            }
+            inv.setItem(SLOT_PREVIOUS, prev);
+        }
+
+        ItemStack back = new ItemStack(Material.BARRIER);
+        ItemMeta backMeta = back.getItemMeta();
+        if (backMeta != null) {
+            backMeta.setDisplayName("§cBack to /shop menu");
+            back.setItemMeta(backMeta);
+        }
+        inv.setItem(SLOT_BACK, back);
+
+        if (page < totalPages - 1) {
+            ItemStack next = new ItemStack(Material.ARROW);
+            ItemMeta meta = next.getItemMeta();
+            if (meta != null) {
+                meta.setDisplayName("§eNext Page");
+                next.setItemMeta(meta);
+            }
+            inv.setItem(SLOT_NEXT, next);
+        }
+
+        player.openInventory(inv);
+    }
+
+    private ItemStack createShopItem(ChestShopEntry entry) {
+        Material iconMaterial = resolveMaterialFromItemName(entry.itemName);
+        if (iconMaterial == null || iconMaterial == Material.AIR) {
+            iconMaterial = Material.CHEST;
+        }
+
+        ItemStack item = new ItemStack(iconMaterial);
+        ItemMeta meta = item.getItemMeta();
+        if (meta != null) {
+            String actionWord = (entry.mode == BrowseMode.BUY ? "BUY" : "SELL");
+            meta.setDisplayName("§a" + entry.quantity + "x " + entry.itemName + " §7(" + actionWord + ")");
+
+            List<String> lore = new ArrayList<>();
+            lore.add("§7Owner: §b" + entry.owner);
+            lore.add("§7Type: " + (entry.mode == BrowseMode.BUY ? "Sell shop (you buy)" : "Buy shop (you sell)"));
+            lore.add("§7Price: §e" + entry.price + " virtue");
+            if (entry.chestLocation != null) {
+                lore.add("§7Coords: §f" + entry.chestLocation.getWorld().getName() + " §7@ §f" +
+                        entry.chestLocation.getBlockX() + ", " +
+                        entry.chestLocation.getBlockY() + ", " +
+                        entry.chestLocation.getBlockZ());
+            } else {
+                lore.add("§7Coords: §f" + entry.worldName + " §7@ sign " +
+                        entry.signX + ", " + entry.signY + ", " + entry.signZ);
+            }
+            lore.add(" ");
+            lore.add("§aClick to track this shop.");
+            meta.setLore(lore);
+
+            // Store sign location for lookup on click
+            PersistentDataContainer container = meta.getPersistentDataContainer();
+            String locString = entry.worldName + "," + entry.signX + "," + entry.signY + "," + entry.signZ;
+            container.set(shopLocKey, PersistentDataType.STRING, locString);
+
+            item.setItemMeta(meta);
+        }
+
+        return item;
+    }
+
+    private List<ChestShopEntry> getAllChestShops(BrowseMode mode) {
+        List<ChestShopEntry> result = new ArrayList<>();
+
+        FileConfiguration config = plugin.getConfig();
+        if (!config.contains("chestshops")) {
+            return result;
+        }
+
+        ConfigurationSection section = config.getConfigurationSection("chestshops");
+        if (section == null) {
+            return result;
+        }
+
+        for (String id : section.getKeys(false)) {
+            String base = "chestshops." + id;
+
+            String worldName = config.getString(base + ".world");
+            String modeStr = config.getString(base + ".mode");
+            if (worldName == null || modeStr == null) {
+                continue;
+            }
+
+            boolean isSellMode = modeStr.equalsIgnoreCase("SELL");
+            boolean isBuyMode = modeStr.equalsIgnoreCase("BUY");
+
+            if (mode == BrowseMode.BUY && !isSellMode) {
+                continue;
+            }
+            if (mode == BrowseMode.SELL && !isBuyMode) {
+                continue;
+            }
+
+            int quantity = config.getInt(base + ".quantity", -1);
+            int price = config.getInt(base + ".price", -1);
+            String itemName = config.getString(base + ".itemName");
+            String owner = config.getString(base + ".owner", "Unknown");
+            boolean adminShop = config.getBoolean(base + ".admin", false);
+
+            if (quantity <= 0 || price <= 0 || itemName == null) {
+                continue;
+            }
+
+            int signX = config.getInt(base + ".signX", Integer.MIN_VALUE);
+            int signY = config.getInt(base + ".signY", Integer.MIN_VALUE);
+            int signZ = config.getInt(base + ".signZ", Integer.MIN_VALUE);
+            if (signX == Integer.MIN_VALUE || signY == Integer.MIN_VALUE || signZ == Integer.MIN_VALUE) {
+                continue;
+            }
+
+            Location chestLoc = null;
+            World world = Bukkit.getWorld(worldName);
+            if (world != null && config.contains(base + ".chestX")) {
+                int cx = config.getInt(base + ".chestX");
+                int cy = config.getInt(base + ".chestY");
+                int cz = config.getInt(base + ".chestZ");
+                Block chestBlock = world.getBlockAt(cx, cy, cz);
+                if (chestBlock.getState() instanceof Chest) {
+                    chestLoc = chestBlock.getLocation();
+                }
+            }
+
+            ChestShopEntry entry = new ChestShopEntry(
+                    mode,
+                    worldName,
+                    signX,
+                    signY,
+                    signZ,
+                    owner,
+                    adminShop,
+                    quantity,
+                    price,
+                    itemName,
+                    chestLoc
+            );
+
+            result.add(entry);
+        }
+
+        return result;
+    }
+
+    private Material resolveMaterialFromItemName(String itemName) {
+        if (itemName == null || itemName.isEmpty()) {
+            return Material.CHEST;
+        }
+
+        String key = itemName.trim().toUpperCase().replace(' ', '_');
+        Material mat = Material.matchMaterial(key);
+        if (mat == null) {
+            return Material.CHEST;
+        }
+        return mat;
+    }
+
+    private Block getChestBehindSign(Block signBlock) {
+        if (signBlock.getBlockData() instanceof Directional) {
+            Directional directional = (Directional) signBlock.getBlockData();
+            BlockFace facing = directional.getFacing();
+            Block chestBlock = signBlock.getRelative(facing.getOppositeFace());
+            if (chestBlock.getState() instanceof Chest) {
+                return chestBlock;
             }
         }
+
+        for (BlockFace face : new BlockFace[]{BlockFace.NORTH, BlockFace.SOUTH, BlockFace.EAST, BlockFace.WEST, BlockFace.UP, BlockFace.DOWN}) {
+            Block adjacent = signBlock.getRelative(face);
+            if (adjacent.getState() instanceof Chest) {
+                return adjacent;
+            }
+        }
+
         return null;
     }
 
-    /**
-     * Play purchase success sound
-     */
-    private void playBuySound(Player player) {
-        if (plugin.getConfig().getBoolean("shop.buy-sound.enabled", true)) {
-            try {
-                String soundName = plugin.getConfig().getString("shop.buy-sound.type", "entity.item.pickup");
-                float volume = (float) plugin.getConfig().getDouble("shop.buy-sound.volume", 1.0);
-                float pitch = (float) plugin.getConfig().getDouble("shop.buy-sound.pitch", 1.2);
-                String properSound = convertSoundName(soundName);
-                player.playSound(player.getLocation(), properSound, SoundCategory.MASTER, volume, pitch);
-            } catch (Exception e) {
-                try {
-                    player.playSound(player.getLocation(), "entity.item.pickup", SoundCategory.MASTER, 1.0f, 1.2f);
-                } catch (Exception ignored) {
-                }
-            }
+    private String getShopOwner(Sign sign) {
+        NamespacedKey ownerKey = new NamespacedKey(plugin, "shop_owner");
+        PersistentDataContainer container = sign.getPersistentDataContainer();
+        if (container.has(ownerKey, PersistentDataType.STRING)) {
+            return container.get(ownerKey, PersistentDataType.STRING);
         }
-    }
-
-    /**
-     * Play purchase deny sound
-     */
-    private void playDenySound(Player player) {
-        if (plugin.getConfig().getBoolean("shop.deny-sound.enabled", true)) {
-            try {
-                String soundName = plugin.getConfig().getString("shop.deny-sound.type", "block.anvil.place");
-                float volume = (float) plugin.getConfig().getDouble("shop.deny-sound.volume", 1.0);
-                float pitch = (float) plugin.getConfig().getDouble("shop.deny-sound.pitch", 0.5);
-                String properSound = convertSoundName(soundName);
-                player.playSound(player.getLocation(), properSound, SoundCategory.MASTER, volume, pitch);
-            } catch (Exception e) {
-                try {
-                    player.playSound(player.getLocation(), "block.anvil.place", SoundCategory.MASTER, 1.0f, 0.5f);
-                } catch (Exception ignored) {
-                }
-            }
-        }
-    }
-
-    /**
-     * Convert sound name format
-     */
-    private String convertSoundName(String soundName) {
-        if (soundName == null) return "block.note_block.ding";
-        if (soundName.contains(".")) return soundName.toLowerCase();
-        return soundName.toLowerCase().replace("_", ".");
+        return null;
     }
 }

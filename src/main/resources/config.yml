@@ -84,7 +84,6 @@ dua:
   eating:
     duration-seconds: 120
     text: "<{player}> Bismillah."
-    once-per-day: true
     virtue-on-say: 1
   farming:
     duration-seconds: 600
@@ -246,5 +245,12 @@ shop:
     insufficient-virtue: "§cYou need %needed% more virtue! You have: %current%"
     purchase-success: "§a✓ Purchased %item% for %cost% virtue!"
     inventory-full: "§cYour inventory is full!"
+
+
+# ============================================
+# OPENSHOP SYSTEM
+# ============================================
+openshop:
+  max-listings-per-player: 6
 
 

@@ -14,19 +14,29 @@ import java.util.UUID;
 import java.util.stream.Collectors;
 
 import org.bukkit.Bukkit;
+import org.bukkit.Location;
 import org.bukkit.Material;
 import org.bukkit.NamespacedKey;
 import org.bukkit.OfflinePlayer;
 import org.bukkit.World;
 import org.bukkit.block.Block;
+import org.bukkit.boss.BarColor;
+import org.bukkit.boss.BarStyle;
+import org.bukkit.boss.BossBar;
 import org.bukkit.command.Command;
 import org.bukkit.command.CommandSender;
+import org.bukkit.command.TabCompleter;
 import org.bukkit.configuration.file.FileConfiguration;
 import org.bukkit.configuration.file.YamlConfiguration;
 import org.bukkit.entity.Player;
 import org.bukkit.event.EventHandler;
 import org.bukkit.event.Listener;
+import org.bukkit.event.inventory.InventoryClickEvent;
+import org.bukkit.event.player.AsyncPlayerChatEvent;
+import org.bukkit.event.player.PlayerCommandPreprocessEvent;
 import org.bukkit.event.player.PlayerJoinEvent;
+import org.bukkit.event.player.PlayerMoveEvent;
+import org.bukkit.event.player.PlayerQuitEvent;
 import org.bukkit.inventory.ItemStack;
 import org.bukkit.inventory.meta.ItemMeta;
 import org.bukkit.inventory.meta.SkullMeta;
@@ -42,6 +52,7 @@ import me.halalcraft.listener.EnchantmentBookListener;
 import me.halalcraft.listener.ImpureEnchantmentPenaltyListener;
 import me.halalcraft.listener.IslamicCombatRule;
 import me.halalcraft.listener.MosqueListener;
+import me.halalcraft.listener.OpenShopListener;
 import me.halalcraft.listener.PrayListener;
 import me.halalcraft.listener.PrayerWarningListener;
 import me.halalcraft.listener.TransactionListener;
@@ -50,7 +61,7 @@ import me.halalcraft.listener.VirtueShopListener;
 import me.halalcraft.listener.VirtueShopSignListener;
 import me.halalcraft.mosque.MosqueManager;
 
-public class HalalCraft extends JavaPlugin implements Listener {
+public class HalalCraft extends JavaPlugin implements Listener, TabCompleter {
 
     /* =========================
        NBT KEYS FOR ITEM TAGGING
@@ -89,6 +100,20 @@ public class HalalCraft extends JavaPlugin implements Listener {
     private long lastWorldTime = 0;
 
     /* =========================
+       BOSSBAR SYSTEM
+       ========================= */
+    private BossBar prayerBossBar;
+
+    /* =========================
+       AFK SYSTEM
+       ========================= */
+    private final Map<UUID, Long> lastActivity = new HashMap<>();
+    private final Map<UUID, Location> lastPosition = new HashMap<>();
+    private final Set<UUID> afkPlayers = new HashSet<>();
+    private static final long AFK_TIMEOUT_MS = 3 * 60 * 1000; // 3 minutes
+    private static final long AFK_MIN_MOVE_DISTANCE_SQ = 4; // Must move at least 2 blocks
+
+    /* =========================
        DUA SYSTEM
        ========================= */
     private DuaListener duaListener;
@@ -110,6 +135,7 @@ public class HalalCraft extends JavaPlugin implements Listener {
     private PrayerWarningListener warningListener;
     private DailyChallengeListener challengeListener;
     private VirtueShopListener shopListener;
+    private OpenShopListener openShopListener;
     private UpgradeListener upgradeListener;
     private EnchantmentBookListener enchantmentBookListener;
     private ImpureEnchantmentPenaltyListener impureEnchantmentListener;
@@ -122,7 +148,9 @@ public class HalalCraft extends JavaPlugin implements Listener {
         loadUpgradeConfig();
         loadVirtueData();
         setupPrayerTimes();
+        setupPrayerBossBar();
         startPrayerSystem();
+        startAfkDetection();
 
         // Register events
         Bukkit.getPluginManager().registerEvents(this, this);
@@ -149,6 +177,9 @@ public class HalalCraft extends JavaPlugin implements Listener {
         shopListener = new VirtueShopListener(this);
         Bukkit.getPluginManager().registerEvents(shopListener, this);
 
+        openShopListener = new OpenShopListener(this);
+        Bukkit.getPluginManager().registerEvents(openShopListener, this);
+
         upgradeListener = new UpgradeListener(this);
         Bukkit.getPluginManager().registerEvents(upgradeListener, this);
 
@@ -165,14 +196,198 @@ public class HalalCraft extends JavaPlugin implements Listener {
         TransactionListener transactionListener = new TransactionListener(this);
         Bukkit.getPluginManager().registerEvents(transactionListener, this);
 
+        // Register tab-completion for all main commands
+        if (getCommand("dua") != null) getCommand("dua").setTabCompleter(this);
+        if (getCommand("pray") != null) getCommand("pray").setTabCompleter(this);
+        if (getCommand("mosque") != null) getCommand("mosque").setTabCompleter(this);
+        if (getCommand("virtue") != null) getCommand("virtue").setTabCompleter(this);
+        if (getCommand("challenge") != null) getCommand("challenge").setTabCompleter(this);
+        if (getCommand("shop") != null) getCommand("shop").setTabCompleter(this);
+        if (getCommand("openshop") != null) getCommand("openshop").setTabCompleter(this);
+        if (getCommand("chestshop") != null) getCommand("chestshop").setTabCompleter(this);
+        if (getCommand("upgrade") != null) getCommand("upgrade").setTabCompleter(this);
+        if (getCommand("halalcraft") != null) getCommand("halalcraft").setTabCompleter(this);
+
         Bukkit.getLogger().info("§a[HalalCraft] Plugin enabled with Warnings, Challenges, Shop, Upgrade System, Enchantment System, Custom Shop Signs, and Offline Transactions!");
     }
 
     @Override
     public void onDisable() {
         saveVirtueData();
+        if (prayerBossBar != null) {
+            prayerBossBar.removeAll();
+        }
         playerScoreboards.clear();
         playerObjectives.clear();
+    }
+
+    /* =====================================================
+     * PRAYER BOSSBAR SYSTEM
+     * ===================================================== */
+    private void setupPrayerBossBar() {
+        prayerBossBar = Bukkit.createBossBar(
+            "§e🕌 Loading prayer info...",
+            BarColor.GREEN,
+            BarStyle.SEGMENTED_6
+        );
+        prayerBossBar.setVisible(true);
+    }
+
+    private void updatePrayerBossBar(long time) {
+        if (prayerBossBar == null) return;
+
+        PrayerInfo closest = getClosestPrayer(time);
+        String currentPrayer = getCurrentPrayer(time);
+
+        // Determine which prayer window we are in vs next prayer
+        String displayName = closest.name;
+        long ticksLeft = closest.timeLeft;
+        String timeStr = formatTime(ticksLeft);
+
+        // Calculate progress (how far through the wait for next prayer)
+        // Each prayer window is ~2000-6000 ticks. We use a max of 6000 for the bar.
+        String previousPrayer = getPreviousPrayer(closest.name);
+        long windowSize = getWindowSize(previousPrayer, closest.name);
+        double progress = 1.0 - ((double) ticksLeft / (double) windowSize);
+        progress = Math.max(0.0, Math.min(1.0, progress));
+
+        // Determine bar color based on urgency
+        BarColor color;
+        if (ticksLeft < 600) { // Less than 30 seconds
+            color = BarColor.RED;
+        } else if (ticksLeft < 2000) { // Less than ~1.5 min
+            color = BarColor.YELLOW;
+        } else {
+            color = BarColor.GREEN;
+        }
+
+        String statusText;
+        if (currentPrayer != null) {
+            statusText = "§a🕌 Current: §f" + currentPrayer + " §7| §eNext: §f" + displayName + " §7in §b" + timeStr;
+        } else {
+            statusText = "§e🕌 Next Prayer: §f" + displayName + " §7in §b" + timeStr;
+        }
+
+        prayerBossBar.setTitle(statusText);
+        prayerBossBar.setColor(color);
+        prayerBossBar.setProgress(progress);
+    }
+
+    private String getPreviousPrayer(String prayerName) {
+        String[] order = {"Subh", "Dzuhr", "Asr", "Maghrib", "Isya"};
+        for (int i = 0; i < order.length; i++) {
+            if (order[i].equals(prayerName)) {
+                return order[(i - 1 + order.length) % order.length];
+            }
+        }
+        return "Isya";
+    }
+
+    private long getWindowSize(String fromPrayer, String toPrayer) {
+        int fromTime = prayerTimes.getOrDefault(fromPrayer, 0);
+        int toTime = prayerTimes.getOrDefault(toPrayer, 0);
+        long window = toTime - fromTime;
+        if (window <= 0) window += 24000;
+        return window;
+    }
+
+    /* =====================================================
+     * AFK DETECTION SYSTEM
+     * ===================================================== */
+    private void startAfkDetection() {
+        // Check every 5 seconds for AFK players
+        Bukkit.getScheduler().runTaskTimer(this, () -> {
+            long now = System.currentTimeMillis();
+            for (Player p : Bukkit.getOnlinePlayers()) {
+                UUID uuid = p.getUniqueId();
+
+                // Initialize if new
+                lastActivity.putIfAbsent(uuid, now);
+                lastPosition.putIfAbsent(uuid, p.getLocation().clone());
+
+                long lastActive = lastActivity.getOrDefault(uuid, now);
+                boolean wasAfk = afkPlayers.contains(uuid);
+
+                if ((now - lastActive) >= AFK_TIMEOUT_MS && !wasAfk) {
+                    // Player just went AFK
+                    afkPlayers.add(uuid);
+                    Bukkit.broadcastMessage("§7[AFK] §f" + p.getName() + " §7is now AFK.");
+                    p.sendMessage("§7You are now marked as AFK. You are immune to missed prayer penalties.");
+                }
+            }
+        }, 100L, 100L); // Every 5 seconds
+    }
+
+    /**
+     * Record player activity to reset AFK timer.
+     * Only counts real position changes (not just looking around).
+     */
+    private void recordActivity(Player p) {
+        UUID uuid = p.getUniqueId();
+        boolean wasAfk = afkPlayers.remove(uuid);
+        lastActivity.put(uuid, System.currentTimeMillis());
+
+        if (wasAfk) {
+            Bukkit.broadcastMessage("§7[AFK] §f" + p.getName() + " §7is no longer AFK.");
+            p.sendMessage("§aYou are no longer AFK.");
+        }
+    }
+
+    public boolean isAfk(Player p) {
+        return afkPlayers.contains(p.getUniqueId());
+    }
+
+    @EventHandler
+    public void onPlayerMove(PlayerMoveEvent e) {
+        Player p = e.getPlayer();
+        UUID uuid = p.getUniqueId();
+        Location from = e.getFrom();
+        Location to = e.getTo();
+        if (to == null) return;
+
+        // Only count REAL movement (not just head rotation)
+        if (from.getBlockX() != to.getBlockX() ||
+            from.getBlockY() != to.getBlockY() ||
+            from.getBlockZ() != to.getBlockZ()) {
+
+            // Anti-exploit: must move at least 2 blocks from last recorded position
+            Location lastPos = lastPosition.get(uuid);
+            if (lastPos != null && lastPos.getWorld() == to.getWorld()) {
+                double distSq = lastPos.distanceSquared(to);
+                if (distSq < AFK_MIN_MOVE_DISTANCE_SQ) {
+                    return; // Too small a movement (anti-macro)
+                }
+            }
+
+            lastPosition.put(uuid, to.clone());
+            recordActivity(p);
+        }
+    }
+
+    @EventHandler
+    public void onPlayerChat(AsyncPlayerChatEvent e) {
+        // Chat counts as activity, but run on main thread
+        Bukkit.getScheduler().runTask(this, () -> recordActivity(e.getPlayer()));
+    }
+
+    @EventHandler
+    public void onPlayerCommand(PlayerCommandPreprocessEvent e) {
+        recordActivity(e.getPlayer());
+    }
+
+    @EventHandler
+    public void onInventoryClick(InventoryClickEvent e) {
+        if (e.getWhoClicked() instanceof Player p) {
+            recordActivity(p);
+        }
+    }
+
+    @EventHandler
+    public void onPlayerQuitAfk(PlayerQuitEvent e) {
+        UUID uuid = e.getPlayer().getUniqueId();
+        afkPlayers.remove(uuid);
+        lastActivity.remove(uuid);
+        lastPosition.remove(uuid);
     }
 
     /* =====================================================
@@ -284,12 +499,26 @@ public class HalalCraft extends JavaPlugin implements Listener {
                 announcedToday.replaceAll((k, v) -> false);
 
                 Bukkit.broadcastMessage("§e☀ A new day has begun. Day " + serverDay + " (" + getDayName(serverDay) + ")");
+
+                // Reset all duas on Subh (new day)
+                if (duaListener != null) {
+                    duaListener.resetAllDuas();
+                    duaListener.resetDuaDayTracking();
+                    Bukkit.broadcastMessage("§e🕌 Subh has arrived. All duas have been reset.");
+                }
             }
             lastWorldTime = time;
 
             PrayerInfo closest = getClosestPrayer(time);
 
+            // Update BossBar
+            updatePrayerBossBar(time);
+
             for (Player p : Bukkit.getOnlinePlayers()) {
+                // Ensure player is added to BossBar
+                if (prayerBossBar != null && !prayerBossBar.getPlayers().contains(p)) {
+                    prayerBossBar.addPlayer(p);
+                }
                 updateScoreboard(p, closest);
             }
 
@@ -387,6 +616,11 @@ public class HalalCraft extends JavaPlugin implements Listener {
 
                 for (Player p : Bukkit.getOnlinePlayers()) {
                     if (!hasPrayed(p, prayerDisplay)) {
+                        // AFK players are immune to missed prayer penalties
+                        if (isAfk(p)) {
+                            p.sendMessage("§7[AFK] You missed the " + prayerDisplay + " prayer, but no penalty (AFK).");
+                            continue;
+                        }
                         changeVirtue(p, penalty);
                         p.sendMessage("§c⚠ You missed the " + prayerDisplay + " prayer. Virtue " + penalty);
                     }
@@ -410,6 +644,15 @@ public class HalalCraft extends JavaPlugin implements Listener {
 
         // Create scoreboard for this player
         setupScoreboardForPlayer(p);
+        
+        // Add player to prayer BossBar
+        if (prayerBossBar != null) {
+            prayerBossBar.addPlayer(p);
+        }
+
+        // Initialize AFK tracking
+        lastActivity.put(uuid, System.currentTimeMillis());
+        lastPosition.put(uuid, p.getLocation().clone());
         
         // Update scoreboard immediately
         PrayerInfo closest = getClosestPrayer(Bukkit.getWorlds().get(0).getTime());
@@ -450,7 +693,29 @@ public class HalalCraft extends JavaPlugin implements Listener {
      * ===================================================== */
     @Override
     public boolean onCommand(CommandSender sender, Command cmd, String label, String[] args) {
+        // SAVEVIRTUE (can be used from console too)
+        if (cmd.getName().equalsIgnoreCase("savevirtue")) {
+            if (!sender.isOp()) {
+                sender.sendMessage("§cYou don't have permission to use this command.");
+                return true;
+            }
+            saveVirtueData();
+            sender.sendMessage("§a✓ All virtue data has been saved to disk.");
+            Bukkit.getLogger().info("[HalalCraft] Virtue data manually saved by " + sender.getName());
+            return true;
+        }
+
         if (!(sender instanceof Player p)) return false;
+
+        // HALALCRAFT INFO
+        if (cmd.getName().equalsIgnoreCase("halalcraft")) {
+            if (args.length > 0 && args[0].equalsIgnoreCase("info")) {
+                sendPluginInfo(p);
+            } else {
+                p.sendMessage("§eUsage: /halalcraft info");
+            }
+            return true;
+        }
 
         // DUAs
         if (cmd.getName().equalsIgnoreCase("dua")) {
@@ -583,6 +848,62 @@ public class HalalCraft extends JavaPlugin implements Listener {
             return true;
         }
 
+        // OPENSHOP - browse or sell single-item listings
+        if (cmd.getName().equalsIgnoreCase("openshop")) {
+            if (args.length >= 1 && args[0].equalsIgnoreCase("sell")) {
+                if (args.length < 2) {
+                    p.sendMessage("§eUsage: /openshop sell <price>");
+                    return true;
+                }
+
+                String priceStr = args[1];
+                int price;
+                try {
+                    price = Integer.parseInt(priceStr);
+                    if (price <= 0) {
+                        p.sendMessage("§cPrice must be positive.");
+                        return true;
+                    }
+                } catch (NumberFormatException e) {
+                    p.sendMessage("§cInvalid price: " + priceStr);
+                    return true;
+                }
+
+                ItemStack hand = p.getInventory().getItemInMainHand();
+                openShopListener.createListing(p, hand, price);
+                return true;
+            }
+
+            // No subcommand: open browser GUI
+            openShopListener.openListings(p, 0);
+            return true;
+        }
+
+        // CHESTSHOP alias - kept for backward compatibility
+        if (cmd.getName().equalsIgnoreCase("chestshop")) {
+            if (args.length < 2 || !args[0].equalsIgnoreCase("sell")) {
+                p.sendMessage("§eUsage: /chestshop sell <price>");
+                return true;
+            }
+
+            String priceStr = args[1];
+            int price;
+            try {
+                price = Integer.parseInt(priceStr);
+                if (price <= 0) {
+                    p.sendMessage("§cPrice must be positive.");
+                    return true;
+                }
+            } catch (NumberFormatException e) {
+                p.sendMessage("§cInvalid price: " + priceStr);
+                return true;
+            }
+
+            ItemStack hand = p.getInventory().getItemInMainHand();
+            openShopListener.createListing(p, hand, price);
+            return true;
+        }
+
         // UPGRADE
         if (cmd.getName().equalsIgnoreCase("upgrade")) {
             upgradeListener.showUpgradeGUI(p);
@@ -590,6 +911,121 @@ public class HalalCraft extends JavaPlugin implements Listener {
         }
 
         return false;
+    }
+
+    /* =====================================================
+     * TAB COMPLETION
+     * ===================================================== */
+    @Override
+    public List<String> onTabComplete(CommandSender sender, Command cmd, String alias, String[] args) {
+        if (!(sender instanceof Player p)) {
+            return Collections.emptyList();
+        }
+
+        String name = cmd.getName().toLowerCase();
+
+        // /dua <type|list>
+        if (name.equals("dua")) {
+            if (args.length == 1) {
+                List<String> completions = new ArrayList<>();
+                completions.add("list");
+                if (getConfig().contains("dua")) {
+                    completions.addAll(getConfig().getConfigurationSection("dua").getKeys(false));
+                }
+                return partial(completions, args[0]);
+            }
+            return Collections.emptyList();
+        }
+
+        // /pray together|join <player>
+        if (name.equals("pray")) {
+            if (args.length == 1) {
+                return partial(List.of("together", "join"), args[0]);
+            }
+            if (args.length == 2 && args[0].equalsIgnoreCase("join")) {
+                List<String> names = new ArrayList<>();
+                for (Player online : Bukkit.getOnlinePlayers()) {
+                    names.add(online.getName());
+                }
+                return partial(names, args[1]);
+            }
+            return Collections.emptyList();
+        }
+
+        // /mosque create <name>
+        if (name.equals("mosque")) {
+            if (args.length == 1) {
+                return partial(List.of("create"), args[0]);
+            }
+            return Collections.emptyList();
+        }
+
+        // /virtue <list|add|give|player>
+        if (name.equals("virtue")) {
+            if (args.length == 1) {
+                return partial(List.of("list", "add", "give"), args[0]);
+            }
+            if (args.length == 2 && (args[0].equalsIgnoreCase("add") || args[0].equalsIgnoreCase("give"))) {
+                List<String> names = new ArrayList<>();
+                for (Player online : Bukkit.getOnlinePlayers()) {
+                    names.add(online.getName());
+                }
+                return partial(names, args[1]);
+            }
+            return Collections.emptyList();
+        }
+
+        // /challenge | /challenge claim <name>
+        if (name.equals("challenge")) {
+            if (args.length == 1) {
+                return partial(List.of("claim"), args[0]);
+            }
+            if (args.length == 2 && args[0].equalsIgnoreCase("claim")) {
+                // Let the listener drive actual names later if needed; for now use config if present
+                if (getConfig().contains("challenges")) {
+                    return partial(new ArrayList<>(getConfig().getConfigurationSection("challenges").getKeys(false)), args[1]);
+                }
+            }
+            return Collections.emptyList();
+        }
+
+        // /openshop [sell]
+        if (name.equals("openshop")) {
+            if (args.length == 1) {
+                return partial(List.of("sell"), args[0]);
+            }
+            return Collections.emptyList();
+        }
+
+        // /chestshop sell
+        if (name.equals("chestshop")) {
+            if (args.length == 1) {
+                return partial(List.of("sell"), args[0]);
+            }
+            return Collections.emptyList();
+        }
+
+        // /halalcraft info
+        if (name.equals("halalcraft")) {
+            if (args.length == 1) {
+                return partial(List.of("info"), args[0]);
+            }
+            return Collections.emptyList();
+        }
+
+        // /shop, /upgrade, /savevirtue: no subcommands, so no suggestions
+        return Collections.emptyList();
+    }
+
+    private List<String> partial(List<String> options, String token) {
+        String lower = token == null ? "" : token.toLowerCase();
+        List<String> out = new ArrayList<>();
+        for (String opt : options) {
+            if (opt.toLowerCase().startsWith(lower)) {
+                out.add(opt);
+            }
+        }
+        return out;
     }
 
     /* =====================================================
@@ -902,6 +1338,105 @@ public class HalalCraft extends JavaPlugin implements Listener {
         if (displayName == null) displayName = "Unknown";
 
         p.sendMessage("§a" + displayName + "'s Virtue: §b" + virtueValue);
+    }
+
+    /* =====================================================
+     * HALALCRAFT INFO COMMAND
+     * ===================================================== */
+    private void sendPluginInfo(Player p) {
+        p.sendMessage("§a§l========== HalalCraft Plugin Info ==========");
+        p.sendMessage("");
+
+        // Prayer System
+        p.sendMessage("§6§l⛩ PRAYER SYSTEM");
+        p.sendMessage("§f  There are 5 daily prayers: §eSubh §f(dawn), §eDzuhr §f(noon), §eAsr §f(afternoon), §eMaghrib §f(sunset), §eIsya §f(night).");
+        p.sendMessage("§f  Use §a/pray §fon a §fPrayer Mat or inside a Mosque to pray.");
+        p.sendMessage("§f  Each prayer gives §b+" + getConfig().getInt("economy.virtue.pray", 5) + " virtue§f. Missing a prayer costs §c" + getConfig().getInt("economy.virtue.miss-prayer", -5) + " virtue§f.");
+        p.sendMessage("§f  On Fridays, Dzuhr becomes §eJumah§f — must be prayed in a mosque for §b+" + getConfig().getInt("friday-prayer.virtue-gain", 150) + " virtue§f.");
+        p.sendMessage("§f  Missing Jumah costs §c" + getConfig().getInt("friday-prayer.virtue-penalty-miss", -50) + " virtue§f.");
+        p.sendMessage("");
+
+        // Congregational Prayer
+        p.sendMessage("§6§l🕌 CONGREGATIONAL PRAYER");
+        p.sendMessage("§f  A player in a mosque can start a group prayer with §a/pray together§f.");
+        p.sendMessage("§f  Others join with §a/pray join <player>§f, then the leader uses §a/pray start§f.");
+        p.sendMessage("§f  Virtue reward is multiplied by the number of participants.");
+        p.sendMessage("");
+
+        // Dua System
+        p.sendMessage("§6§l📿 DUA SYSTEM");
+        p.sendMessage("§f  Say duas before actions with §a/dua <type>§f. List them with §a/dua list§f.");
+        p.sendMessage("§f  §eSlaughter dua§f — say before killing farm animals. Without it: §c" + getConfig().getInt("economy.virtue.miss-dua-slaughter", -1) + " virtue§f.");
+        p.sendMessage("§f  §eEating dua§f — say before eating. Without it: food is halved & §c" + getConfig().getInt("economy.virtue.miss-dua-eating", -1) + " virtue§f.");
+        p.sendMessage("§f  §eSleep dua§f — must be said before sleeping in a bed.");
+        p.sendMessage("§f  §eFarming dua§f — say before farming. Lasts 10 minutes.");
+        p.sendMessage("§f  §eMining dua§f — say before mining. Lasts 1 minute.");
+        p.sendMessage("§f  Eating dua can be said §arepeatedly§f. Some duas are once-per-day.");
+        p.sendMessage("§f  All duas §ereset at Subh§f (dawn of each new day).");
+        p.sendMessage("");
+
+        // Virtue System
+        p.sendMessage("§6§l✨ VIRTUE SYSTEM");
+        p.sendMessage("§f  Virtue is the core currency. Earn it by praying, saying duas, and daily challenges.");
+        p.sendMessage("§f  Lose it by missing prayers, killing without dua, eating without dua, or using haram enchantments.");
+        p.sendMessage("§f  §a/virtue §f— view virtue guide. §a/virtue list §f— leaderboard. §a/virtue <player> §f— check a player.");
+        p.sendMessage("§f  §a/virtue give <player> <amount> §f— transfer virtue to another player.");
+        p.sendMessage("");
+
+        // Combat System
+        p.sendMessage("§6§l⚔ COMBAT SYSTEM");
+        p.sendMessage("§f  You cannot attack mobs unprovoked. If a mob attacks you, you get §a" + getConfig().getInt("combat.free-kill-duration-seconds", 120) + "s §ffree combat.");
+        p.sendMessage("§f  Attacking without being provoked costs §c" + getConfig().getInt("economy.virtue.illegal-attack", -2) + " virtue§f.");
+        p.sendMessage("");
+
+        // Enchantment System
+        p.sendMessage("§6§l🔮 ENCHANTMENT SYSTEM");
+        p.sendMessage("§f  Enchanting table enchantments are considered §charm (blackmagic)§f.");
+        p.sendMessage("§f  Using items with impure enchantments costs §c" + getConfig().getInt("economy.virtue.haram-enchantment-use", -10) + " virtue§f.");
+        p.sendMessage("§f  Buy a §dPurification Book §ffrom server shops (e.g. chest shops) to cleanse haram enchantments.");
+        p.sendMessage("§f  Use §a/upgrade §fto access §ehalal enchantment upgrades §fpurchased with virtue.");
+        p.sendMessage("");
+
+        // Shops & Economy
+        p.sendMessage("§6§l🛒 SHOPS & ECONOMY");
+        p.sendMessage("§f  §a/shop §f— open the Chest Shop browser to track all active [Sell]/[Buy]/admin shops.");
+        p.sendMessage("§f     Choose §aBuy §for §eSell §fthen browse and locate chest shops around the world.");
+        p.sendMessage("§f  Players can create [Sell]/[Buy]/[aSell]/[aBuy] signs to trade items for virtue.");
+        p.sendMessage("§f  Offline transactions are supported — shops work even when the owner is offline.");
+        p.sendMessage("§f  §a/openshop §f— browse global one-item listings from all players.");
+        p.sendMessage("§f  §a/openshop sell <price> §f— list the item in your hand for virtue.");
+        p.sendMessage("§f  Right-click your own listing in the GUI to cancel and get the item back.");
+        p.sendMessage("§f  Max listings per player are configurable via §eopenshop.max-listings-per-player§f in config.yml.");
+        p.sendMessage("");
+
+        // Mosque System
+        p.sendMessage("§6§l🏛 MOSQUE SYSTEM");
+        p.sendMessage("§f  Use §a/mosque create <name> §fto designate a mosque area.");
+        p.sendMessage("§f  Praying inside a mosque gives §b+" + getConfig().getInt("mosque.prayer-virtue", 10) + " virtue §f(more than solo prayer).");
+        p.sendMessage("§f  Jumah prayer can only be performed in a mosque.");
+        p.sendMessage("");
+
+        // Daily Challenges
+        p.sendMessage("§6§l🏆 DAILY CHALLENGES");
+        p.sendMessage("§f  §a/challenge §f— view today's challenges and your progress.");
+        p.sendMessage("§f  §a/challenge claim <name> §f— claim completed challenge rewards.");
+        p.sendMessage("§f  Challenges reset daily and offer bonus virtue for completing tasks.");
+        p.sendMessage("");
+
+        // Haram Items
+        p.sendMessage("§6§l🚫 HARAM RULES");
+        p.sendMessage("§f  Pigs are haram — touching one gives infinite slowness (drink milk to cure).");
+        p.sendMessage("§f  Drinking potions is haram: §c" + getConfig().getInt("economy.virtue.potion-drinking", -10) + " virtue§f.");
+        p.sendMessage("§f  Enchanting tables are flagged as blackmagic when placed.");
+        p.sendMessage("");
+
+        // QoL & Admin
+        p.sendMessage("§6§l⚙ QUALITY OF LIFE & ADMIN");
+        p.sendMessage("§f  Most commands support §atab-completion§f for subcommands and player names.");
+        p.sendMessage("§f  §a/savevirtue §f— OP-only command to manually save all virtue data to disk.");
+        p.sendMessage("");
+
+        p.sendMessage("§a§l==========================================");
     }
 
     /* =====================================================
